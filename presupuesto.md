@@ -20,3 +20,12 @@
 * Pasarela de pagos (con sandbox, ejemplo PayU o Stripe).
 * Refinar la parte de licencias con validaciones.
 * Entregable funcional con demo y documentación mínima.
+
+### Mockup Interactivo: 
+
+[https://lowyer-six.vercel.app/]
+
+
+### Pagina para ver el Dominio
+
+[https://www.hostinger.com/co/domain-name-results]

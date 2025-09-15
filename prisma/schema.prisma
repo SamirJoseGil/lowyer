@@ -1,0 +1,373 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------- ROLES & PERMISSIONS ----------
+model Role {
+  id          Int    @id @default(autoincrement()) @db.SmallInt
+  name        String @unique
+  description String?
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  description String?
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           Int @id @default(autoincrement())
+  roleId       Int @map("role_id") @db.SmallInt
+  permissionId Int @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ---------- USERS & PROFILES ----------
+model User {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique
+  passwordHash  String?   @map("password_hash")
+  roleId        Int       @map("role_id") @db.SmallInt
+  status        String    @default("active")
+  emailVerified Boolean   @default(false) @map("email_verified")
+  phoneVerified Boolean   @default(false) @map("phone_verified")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastLogin     DateTime? @map("last_login") @db.Timestamptz(6)
+
+  role         Role          @relation(fields: [roleId], references: [id])
+  profile      Profile?
+  lawyer       Lawyer?
+  userLicenses UserLicense[]
+  purchases    Purchase[]
+  chatSessions ChatSession[]
+  messages     Message[]
+  loginAttempts LoginAttempt[]
+  lawyerReviews LawyerReview[]
+  auditLogs    AuditLog[]
+  consents     Consent[]
+  legalHolds   LegalHold[]
+  userMetrics  UserMetric[]
+  reviewedLawyerDocuments LawyerDocument[] @relation("ReviewedBy")
+  reviewedMessageModerations MessageModeration[] @relation("ReviewedBy")
+
+  @@index([email])
+  @@map("users")
+}
+
+model Profile {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String    @unique @map("user_id") @db.Uuid
+  firstName      String?   @map("first_name")
+  lastName       String?   @map("last_name")
+  documentType   String?   @map("document_type")
+  documentNumber String?   @map("document_number")
+  phone          String?
+  address        String?
+  avatarUrl      String?   @map("avatar_url")
+  metadata       Json?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+// ---------- LOGIN ATTEMPTS ----------
+model LoginAttempt {
+  id        BigInt   @id @default(autoincrement())
+  userId    String?  @map("user_id") @db.Uuid
+  ipAddress String?  @map("ip_address")
+  status    String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("login_attempts")
+}
+
+// ---------- LAWYERS ----------
+model Lawyer {
+  id                    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String  @unique @map("user_id") @db.Uuid
+  professionalCardNumber String? @map("professional_card_number")
+  university            String?
+  specialty             String?
+  experienceYears       Int?    @map("experience_years")
+  rut                   String?
+  digitalSignatureUrl   String? @map("digital_signature_url")
+  status                String  @default("pending")
+
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents      LawyerDocument[]
+  reviews        LawyerReview[]
+  chatSessions   ChatSession[]
+  lawyerMetrics  LawyerMetric[]
+
+  @@map("lawyers")
+}
+
+model LawyerDocument {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lawyerId   String    @map("lawyer_id") @db.Uuid
+  fileUrl    String    @map("file_url")
+  docType    String?   @map("doc_type")
+  status     String    @default("pending")
+  reviewedBy String?   @map("reviewed_by") @db.Uuid
+  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  lawyer   Lawyer @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+  reviewer User?  @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+
+  @@map("lawyer_documents")
+}
+
+model LawyerReview {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lawyerId  String   @map("lawyer_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  rating    Int      @db.SmallInt
+  comment   String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  lawyer Lawyer @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("lawyer_reviews")
+}
+
+// ---------- LICENSES & USER_LICENSES ----------
+model License {
+  id          String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String  @unique
+  type        String
+  hoursTotal  Decimal @map("hours_total") @db.Decimal(10, 2)
+  validityDays Int    @map("validity_days")
+  appliesTo   String  @default("both") @map("applies_to")
+  priceCents  BigInt  @default(0) @map("price_cents")
+  currency    String  @default("COP")
+  active      Boolean @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  userLicenses UserLicense[]
+  purchases    Purchase[]
+
+  @@map("licenses")
+}
+
+model UserLicense {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  licenseId      String    @map("license_id") @db.Uuid
+  hoursRemaining Decimal   @map("hours_remaining") @db.Decimal(12, 2)
+  status         String    @default("active")
+  startedAt      DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  expiresAt      DateTime? @map("expires_at") @db.Timestamptz(6)
+  source         String?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  license      License       @relation(fields: [licenseId], references: [id])
+  chatSessions ChatSession[]
+
+  @@index([userId])
+  @@map("user_licenses")
+}
+
+// ---------- PURCHASES & INVOICES & DISCOUNTS ----------
+model Purchase {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  licenseId         String?   @map("license_id") @db.Uuid
+  amountCents       BigInt    @map("amount_cents")
+  currency          String    @default("COP")
+  paymentMethod     String?   @map("payment_method")
+  wompiTransactionId String?  @map("wompi_transaction_id")
+  status            String    @default("pending")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user     User      @relation(fields: [userId], references: [id])
+  license  License?  @relation(fields: [licenseId], references: [id])
+  invoices Invoice[]
+
+  @@index([userId])
+  @@map("purchases")
+}
+
+model Invoice {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  purchaseId   String   @map("purchase_id") @db.Uuid
+  razonSocial  String?  @map("razon_social")
+  nit          String?
+  direccion    String?
+  invoicePdfUrl String? @map("invoice_pdf_url")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id])
+
+  @@map("invoices")
+}
+
+model Discount {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code         String    @unique
+  description  String?
+  discountType String    @map("discount_type")
+  value        Decimal   @db.Decimal(12, 4)
+  validFrom    DateTime? @map("valid_from") @db.Timestamptz(6)
+  validUntil   DateTime? @map("valid_until") @db.Timestamptz(6)
+  active       Boolean   @default(true)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("discounts")
+}
+
+// ---------- CHAT SESSIONS & MESSAGES ----------
+model ChatSession {
+  id                String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String       @map("user_id") @db.Uuid
+  lawyerId          String?      @map("lawyer_id") @db.Uuid
+  licenseInstanceId String?      @map("license_instance_id") @db.Uuid
+  startedAt         DateTime     @default(now()) @map("started_at") @db.Timestamptz(6)
+  endedAt           DateTime?    @map("ended_at") @db.Timestamptz(6)
+  status            String       @default("active")
+  summary           String?
+  metadata          Json?
+
+  user            User         @relation(fields: [userId], references: [id])
+  lawyer          Lawyer?      @relation(fields: [lawyerId], references: [id])
+  licenseInstance UserLicense? @relation(fields: [licenseInstanceId], references: [id])
+  messages        Message[]
+
+  @@map("chat_sessions")
+}
+
+model Message {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chatSessionId String   @map("chat_session_id") @db.Uuid
+  senderId      String?  @map("sender_id") @db.Uuid
+  senderRole    String   @map("sender_role")
+  content       String
+  status        String   @default("sent")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  chatSession       ChatSession         @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
+  sender            User?               @relation(fields: [senderId], references: [id])
+  messageModeration MessageModeration[]
+
+  @@index([chatSessionId])
+  @@map("messages")
+}
+
+model MessageModeration {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  messageId  String    @map("message_id") @db.Uuid
+  status     String    @default("pending")
+  reason     String?
+  reviewedBy String?   @map("reviewed_by") @db.Uuid
+  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  message  Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reviewer User?   @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+
+  @@map("message_moderation")
+}
+
+// ---------- AUDIT, CONSENTS, LEGAL HOLDS ----------
+model AuditLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  action    String
+  meta      Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Consent {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  termsVersion   String?  @map("terms_version")
+  privacyVersion String?  @map("privacy_version")
+  acceptedAt     DateTime @default(now()) @map("accepted_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("consents")
+}
+
+model LegalHold {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  reason    String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("legal_holds")
+}
+
+// ---------- METRICS ----------
+model UserMetric {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  hoursUsedTotal  Decimal   @default(0) @map("hours_used_total") @db.Decimal(12, 2)
+  sessionsCount   Int       @default(0) @map("sessions_count")
+  lastSessionAt   DateTime? @map("last_session_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_metrics")
+}
+
+model LawyerMetric {
+  id            String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lawyerId      String  @map("lawyer_id") @db.Uuid
+  casesAttended Int     @default(0) @map("cases_attended")
+  avgRating     Decimal @default(0) @map("avg_rating") @db.Decimal(4, 2)
+  hoursInChat   Decimal @default(0) @map("hours_in_chat") @db.Decimal(12, 2)
+
+  lawyer Lawyer @relation(fields: [lawyerId], references: [id])
+
+  @@map("lawyer_metrics")
+}
+
+model SalesMetric {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  month            Int
+  year             Int
+  totalSalesCents  BigInt   @default(0) @map("total_sales_cents")
+  trialConversions Int      @default(0) @map("trial_conversions")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([month, year])
+  @@map("sales_metrics")
+}

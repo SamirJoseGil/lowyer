@@ -11,8 +11,46 @@ import { createReadableStreamFromReadable } from "@remix-run/node";
 import { RemixServer } from "@remix-run/react";
 import { isbot } from "isbot";
 import { renderToPipeableStream } from "react-dom/server";
+import { init } from "./env.server";
+
+// Initialize environment validation first
+init();
 
 const ABORT_DELAY = 5_000;
+
+// Log server startup
+console.log(`🚀 Lawyer server starting...`);
+console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+console.log(
+  `🔧 Database URL configured: ${process.env.DATABASE_URL ? "✅" : "❌"
+  }`
+);
+console.log(
+  `🗄️ Supabase URL configured: ${process.env.SUPABASE_URL ? "✅" : "❌"}`
+);
+
+// More detailed Gemini API key logging
+const geminiKey = process.env.GEMINI_API_KEY?.trim();
+if (geminiKey) {
+  console.log(`🤖 Gemini API configured: ✅`);
+  console.log(`🔑 Gemini API key format: ${geminiKey.startsWith('AIza') ? '✅ Valid format' : '❌ Invalid format'}`);
+  console.log(`🔑 Gemini API key length: ${geminiKey.length} characters`);
+  console.log(`🔑 Gemini API key preview: ${geminiKey.substring(0, 8)}...${geminiKey.slice(-4)}`);
+
+  // Check for common issues
+  if (geminiKey.includes(' ')) {
+    console.log(`⚠️ WARNING: API key contains spaces`);
+  }
+  if (geminiKey.includes('"')) {
+    console.log(`⚠️ WARNING: API key contains quotes`);
+  }
+  if (geminiKey.includes('tu-api-key')) {
+    console.log(`❌ ERROR: API key contains placeholder text`);
+  }
+} else {
+  console.log(`🤖 Gemini API configured: ❌ KEY MISSING OR EMPTY`);
+  console.log(`🔍 Raw env value: "${process.env.GEMINI_API_KEY}"`);
+}
 
 export default function handleRequest(
   request: Request,
@@ -26,17 +64,17 @@ export default function handleRequest(
 ) {
   return isbot(request.headers.get("user-agent") || "")
     ? handleBotRequest(
-        request,
-        responseStatusCode,
-        responseHeaders,
-        remixContext
-      )
+      request,
+      responseStatusCode,
+      responseHeaders,
+      remixContext
+    )
     : handleBrowserRequest(
-        request,
-        responseStatusCode,
-        responseHeaders,
-        remixContext
-      );
+      request,
+      responseStatusCode,
+      responseHeaders,
+      remixContext
+    );
 }
 
 function handleBotRequest(
@@ -79,7 +117,7 @@ function handleBotRequest(
           // errors encountered during initial shell rendering since they'll
           // reject and get logged in handleDocumentRequest.
           if (shellRendered) {
-            console.error(error);
+            console.error("💥 Server render error:", error);
           }
         },
       }
@@ -129,7 +167,7 @@ function handleBrowserRequest(
           // errors encountered during initial shell rendering since they'll
           // reject and get logged in handleDocumentRequest.
           if (shellRendered) {
-            console.error(error);
+            console.error("💥 Server render error:", error);
           }
         },
       }

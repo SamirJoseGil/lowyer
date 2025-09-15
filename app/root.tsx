@@ -9,6 +9,7 @@ import {
 import type { LinksFunction, MetaFunction } from "@remix-run/node";
 
 import "./tailwind.css";
+import { getEnv } from "./env.server";
 
 export const meta: MetaFunction = () => {
   return [

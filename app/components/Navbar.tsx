@@ -1,7 +1,7 @@
-import { Link } from "@remix-run/react";
+import { Link, Form, useLoaderData } from "@remix-run/react";
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Bars3Icon, XMarkIcon } from "@heroicons/react/24/outline";
+import { Bars3Icon, XMarkIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 
 const navigation = [
@@ -11,8 +11,25 @@ const navigation = [
     { name: "Acerca de", href: "/acerca" },
 ];
 
-export default function Navbar() {
+type NavbarProps = {
+    user?: {
+        id: string;
+        email: string;
+        profile?: {
+            firstName?: string | null;
+            lastName?: string | null;
+            avatarUrl?: string | null;
+        } | null;
+    } | null;
+};
+
+export default function Navbar({ user }: NavbarProps) {
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+    const displayName = user?.profile?.firstName && user?.profile?.lastName
+        ? `${user.profile.firstName} ${user.profile.lastName}`
+        : user?.email?.split('@')[0] || 'Usuario';
 
     return (
         <header className="fixed inset-x-0 top-0 z-50 bg-white shadow">
@@ -59,14 +76,69 @@ export default function Navbar() {
                     ))}
                 </div>
 
-                {/* Login button */}
+                {/* User menu or Login button */}
                 <div className="hidden lg:flex lg:flex-1 lg:justify-end">
-                    <Link
-                        to="/iniciar-sesion"
-                        className="rounded-md bg-law-accent px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-law-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-law-accent transition-colors"
-                    >
-                        Iniciar sesión
-                    </Link>
+                    {user ? (
+                        <div className="relative">
+                            <button
+                                type="button"
+                                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold text-gray-900 hover:bg-gray-50"
+                                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                            >
+                                {user.profile?.avatarUrl ? (
+                                    <img
+                                        className="h-6 w-6 rounded-full"
+                                        src={user.profile.avatarUrl}
+                                        alt={displayName}
+                                    />
+                                ) : (
+                                    <div className="h-6 w-6 rounded-full bg-law-accent flex items-center justify-center">
+                                        <span className="text-xs font-medium text-white">
+                                            {displayName.charAt(0).toUpperCase()}
+                                        </span>
+                                    </div>
+                                )}
+                                <span>{displayName}</span>
+                                <ChevronDownIcon className="h-4 w-4" />
+                            </button>
+
+                            {userMenuOpen && (
+                                <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+                                    <div className="py-1">
+                                        <Link
+                                            to="/perfil"
+                                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                            onClick={() => setUserMenuOpen(false)}
+                                        >
+                                            Mi perfil
+                                        </Link>
+                                        <Link
+                                            to="/licencias"
+                                            className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                            onClick={() => setUserMenuOpen(false)}
+                                        >
+                                            Mis licencias
+                                        </Link>
+                                        <Form method="post" action="/logout">
+                                            <button
+                                                type="submit"
+                                                className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                                            >
+                                                Cerrar sesión
+                                            </button>
+                                        </Form>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <Link
+                            to="/login"
+                            className="rounded-md bg-law-accent px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-law-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-law-accent transition-colors"
+                        >
+                            Iniciar sesión
+                        </Link>
+                    )}
                 </div>
             </nav>
 
@@ -106,6 +178,27 @@ export default function Navbar() {
 
                     <div className="mt-6 flow-root">
                         <div className="-my-6 divide-y divide-gray-500/10">
+                            {user && (
+                                <div className="py-6">
+                                    <div className="flex items-center gap-3 px-3 py-2">
+                                        {user.profile?.avatarUrl ? (
+                                            <img
+                                                className="h-8 w-8 rounded-full"
+                                                src={user.profile.avatarUrl}
+                                                alt={displayName}
+                                            />
+                                        ) : (
+                                            <div className="h-8 w-8 rounded-full bg-law-accent flex items-center justify-center">
+                                                <span className="text-sm font-medium text-white">
+                                                    {displayName.charAt(0).toUpperCase()}
+                                                </span>
+                                            </div>
+                                        )}
+                                        <span className="font-medium text-gray-900">{displayName}</span>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-2 py-6">
                                 {navigation.map((item) => (
                                     <Link
@@ -117,15 +210,46 @@ export default function Navbar() {
                                         {item.name}
                                     </Link>
                                 ))}
+
+                                {user && (
+                                    <>
+                                        <Link
+                                            to="/perfil"
+                                            className="-mx-3 block rounded-lg px-3 py-2 text-base font-semibold leading-7 text-gray-900 hover:bg-gray-50"
+                                            onClick={() => setMobileMenuOpen(false)}
+                                        >
+                                            Mi perfil
+                                        </Link>
+                                        <Link
+                                            to="/licencias"
+                                            className="-mx-3 block rounded-lg px-3 py-2 text-base font-semibold leading-7 text-gray-900 hover:bg-gray-50"
+                                            onClick={() => setMobileMenuOpen(false)}
+                                        >
+                                            Mis licencias
+                                        </Link>
+                                    </>
+                                )}
                             </div>
+
                             <div className="py-6">
-                                <Link
-                                    to="/iniciar-sesion"
-                                    className="-mx-3 block rounded-lg px-3 py-2.5 text-base font-semibold leading-7 text-white bg-law-accent hover:bg-law-accent/90 text-center"
-                                    onClick={() => setMobileMenuOpen(false)}
-                                >
-                                    Iniciar sesión
-                                </Link>
+                                {user ? (
+                                    <Form method="post" action="/logout">
+                                        <button
+                                            type="submit"
+                                            className="-mx-3 block rounded-lg px-3 py-2.5 text-base font-semibold leading-7 text-white bg-red-600 hover:bg-red-700 text-center w-full"
+                                        >
+                                            Cerrar sesión
+                                        </button>
+                                    </Form>
+                                ) : (
+                                    <Link
+                                        to="/login"
+                                        className="-mx-3 block rounded-lg px-3 py-2.5 text-base font-semibold leading-7 text-white bg-law-accent hover:bg-law-accent/90 text-center"
+                                        onClick={() => setMobileMenuOpen(false)}
+                                    >
+                                        Iniciar sesión
+                                    </Link>
+                                )}
                             </div>
                         </div>
                     </div>

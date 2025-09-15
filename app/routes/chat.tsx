@@ -1,250 +1,228 @@
-import { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import type { MetaFunction } from "@remix-run/node";
+import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
+import { useLoaderData, useFetcher } from "@remix-run/react";
+import { useState, useEffect } from "react";
+import { requireUser } from "~/lib/auth.server";
+import { getUserActiveLicense } from "~/lib/licenses.server";
+import { getUserActiveChatSession, createChatSession, getChatMessages } from "~/lib/chat.server";
 import Layout from "~/components/Layout";
-import {
-    PaperAirplaneIcon,
-    ArrowPathIcon,
-    InformationCircleIcon,
-    LightBulbIcon
-} from "@heroicons/react/24/outline";
+import ChatContainer from "~/components/Chat/ChatContainer";
+import LicenseStatus from "~/components/LicenseStatus";
+import TrialBanner from "~/components/TrialBanner";
 
-export const meta: MetaFunction = () => {
-    return [
-        { title: "Chat con Asistente Legal - Lawyer" },
-        { name: "description", content: "Consulta con nuestro asistente legal basado en IA para obtener respuestas rápidas a tus preguntas jurídicas." },
-    ];
-};
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+    const user = await requireUser(request);
 
-// Tipo para los mensajes
-type Message = {
-    id: string;
-    text: string;
-    sender: 'user' | 'bot';
-    timestamp: Date;
-};
+    // Verificar licencia activa
+    const activeLicense = await getUserActiveLicense(user.id);
 
-// Ejemplos predefinidos
-const examples = [
-    "¿Cómo puedo reclamar por un producto defectuoso?",
-    "¿Cuáles son mis derechos laborales si me despiden?",
-    "¿Qué debo hacer ante una multa de tránsito injusta?",
-    "¿Cómo funciona el proceso de divorcio en Colombia?"
-];
+    if (!activeLicense) {
+        // Redirigir a página de licencias si no tiene licencia válida
+        return redirect("/licencias?message=need-license");
+    }
 
-// Respuestas predefinidas
-const predefinedResponses: Record<string, string> = {
-    "¿Cómo puedo reclamar por un producto defectuoso?":
-        "Para reclamar por un producto defectuoso, debes seguir estos pasos:\n\n1. Reúne evidencia del defecto (fotos, videos)\n2. Contacta al vendedor o fabricante presentando tu factura de compra\n3. Presenta una reclamación formal por escrito detallando el problema\n4. Si no obtienes respuesta en 15 días, puedes acudir a la Superintendencia de Industria y Comercio\n\nRecuerda que por ley tienes derecho a garantía, reparación, cambio o devolución del dinero según el caso.",
+    // Verificar si ya tiene una sesión activa
+    const activeSession = await getUserActiveChatSession(user.id);
 
-    "¿Cuáles son mis derechos laborales si me despiden?":
-        "Si te despiden, tus derechos laborales incluyen:\n\n1. Indemnización por despido sin justa causa (si aplica)\n2. Pago de salarios pendientes\n3. Liquidación de prestaciones sociales (cesantías, intereses, prima, vacaciones)\n4. Certificado laboral\n\nSi consideras que fue un despido injustificado, tienes 3 años para reclamar judicialmente. Te recomendaría conservar toda comunicación relacionada con el despido y consultar con un abogado laboral para evaluar tu caso específico.",
+    let initialMessages: any[] = [];
+    if (activeSession) {
+        initialMessages = await getChatMessages(activeSession.id, user.id);
+    }
 
-    "¿Qué debo hacer ante una multa de tránsito injusta?":
-        "Para impugnar una multa de tránsito que consideres injusta:\n\n1. Verifica los detalles de la infracción en el comparendo\n2. Recopila evidencia que respalde tu versión (fotos, videos, testimonios)\n3. Presenta un recurso de reconsideración por escrito dentro de los 5 días hábiles siguientes\n4. Si es rechazado, puedes presentar recurso de apelación\n\nEs importante actuar rápidamente, ya que los plazos son estrictos. Si no impugnas a tiempo, perderás el derecho a objetar la multa.",
-
-    "¿Cómo funciona el proceso de divorcio en Colombia?":
-        "El divorcio en Colombia puede tramitarse de dos formas:\n\n1. Divorcio de mutuo acuerdo:\n   - Se realiza ante notario si no hay hijos menores\n   - Ante juez de familia si hay hijos menores\n   - Requiere un acuerdo sobre bienes, custodia y alimentos\n   - Suele durar entre 3 y 6 meses\n\n2. Divorcio contencioso:\n   - Se tramita ante juez de familia\n   - Requiere demostrar una causal de divorcio (infidelidad, maltrato, etc.)\n   - Puede durar entre 1 y 2 años\n\nEn ambos casos, necesitarás documentos como registro civil de matrimonio, registros de nacimiento de hijos, y un inventario de bienes."
-};
-
-export default function ChatPage() {
-    const [messages, setMessages] = useState<Message[]>([
-        {
-            id: '1',
-            text: 'Hola, soy tu asistente legal. ¿En qué puedo ayudarte hoy?',
-            sender: 'bot',
-            timestamp: new Date()
+    // Serialize BigInt fields
+    const serializedActiveLicense = activeLicense ? {
+        ...activeLicense,
+        hoursRemaining: Number(activeLicense.hoursRemaining),
+        license: {
+            ...activeLicense.license,
+            hoursTotal: Number(activeLicense.license.hoursTotal),
+            priceCents: Number(activeLicense.license.priceCents)
         }
-    ]);
-    const [input, setInput] = useState('');
-    const [loading, setLoading] = useState(false);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+    } : null;
 
-    // Auto-scroll a los mensajes más recientes
-    useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }, [messages]);
-
-    const handleSendMessage = () => {
-        if (!input.trim()) return;
-
-        // Añadir mensaje del usuario
-        const userMessage: Message = {
-            id: Date.now().toString(),
-            text: input,
-            sender: 'user',
-            timestamp: new Date()
-        };
-
-        setMessages(prev => [...prev, userMessage]);
-        setInput('');
-        setLoading(true);
-
-        // Simular respuesta del bot (con delay para efecto realista)
-        setTimeout(() => {
-            let botResponse: string;
-
-            // Buscar respuesta predefinida
-            if (predefinedResponses[input]) {
-                botResponse = predefinedResponses[input];
-            } else {
-                // Respuesta genérica
-                botResponse = "Entiendo tu consulta sobre este tema legal. Para darte una respuesta más precisa, necesitaría conocer más detalles sobre tu situación particular. Sin embargo, te recomendaría consultar con un abogado especializado, ya que cada caso puede tener matices importantes. ¿Hay algún aspecto específico sobre el que necesites orientación?";
+    const serializedActiveSession = activeSession ? {
+        ...activeSession,
+        licenseInstance: activeSession.licenseInstance ? {
+            ...activeSession.licenseInstance,
+            hoursRemaining: Number(activeSession.licenseInstance.hoursRemaining),
+            license: {
+                ...activeSession.licenseInstance.license,
+                hoursTotal: Number(activeSession.licenseInstance.license.hoursTotal),
+                priceCents: Number(activeSession.licenseInstance.license.priceCents)
             }
+        } : null
+    } : null;
 
-            const botMessage: Message = {
-                id: Date.now().toString(),
-                text: botResponse,
-                sender: 'bot',
-                timestamp: new Date()
-            };
+    return json({
+        user,
+        activeLicense: serializedActiveLicense,
+        activeSession: serializedActiveSession,
+        initialMessages
+    });
+};
 
-            setMessages(prev => [...prev, botMessage]);
-            setLoading(false);
-        }, 1500);
-    };
+export const action = async ({ request }: ActionFunctionArgs) => {
+    const user = await requireUser(request);
+    const formData = await request.formData();
+    const action = formData.get("action");
 
-    const handleKeyPress = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSendMessage();
+    switch (action) {
+        case "create-session": {
+            const chatType = formData.get("chatType") as "ia" | "lawyer";
+            const result = await createChatSession(user.id, chatType);
+            return json(result);
         }
+
+        default:
+            return json({ error: "Acción no válida" }, { status: 400 });
+    }
+};
+
+export default function Chat() {
+    const { user, activeLicense, activeSession, initialMessages } = useLoaderData<typeof loader>();
+    const [currentSession, setCurrentSession] = useState(activeSession);
+    const [chatType, setChatType] = useState<"ia" | "lawyer">("ia");
+    const sessionCreator = useFetcher();
+
+    const handleCreateSession = (type: "ia" | "lawyer") => {
+        setChatType(type);
+        sessionCreator.submit(
+            { action: "create-session", chatType: type },
+            { method: "post" }
+        );
     };
 
-    const handleExampleClick = (example: string) => {
-        setInput(example);
-    };
+    // Update session when fetcher returns
+    useEffect(() => {
+        if (sessionCreator.data && typeof sessionCreator.data === 'object' && sessionCreator.data !== null && 'success' in sessionCreator.data && 'sessionId' in sessionCreator.data) {
+            // Reload to get the new session data
+            window.location.reload();
+        }
+    }, [sessionCreator.data]);
 
     return (
-        <Layout>
-            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                <div className="py-10">
-                    <motion.div
-                        className="mx-auto max-w-4xl rounded-xl border border-gray-200 shadow-md overflow-hidden"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                    >
-                        {/* Header */}
-                        <div className="bg-white px-6 py-4 border-b border-gray-200">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-3">
-                                    <div className="h-10 w-10 rounded-full bg-law-accent flex items-center justify-center">
-                                        <span className="text-white font-semibold text-lg">L</span>
+        <Layout user={user}>
+            <div className="h-screen flex flex-col">
+                {/* License Banner */}
+                <div className="flex-shrink-0">
+                    <TrialBanner user={user} activeLicense={activeLicense as any} />
+                </div>
+
+                <div className="flex-1 flex overflow-hidden">
+                    {/* Sidebar */}
+                    <div className="w-80 bg-gray-50 border-r border-gray-200 flex flex-col">
+                        <div className="p-4 border-b border-gray-200">
+                            <h2 className="text-lg font-semibold text-gray-900">Chat Legal</h2>
+                            <p className="text-sm text-gray-600 mt-1">
+                                Selecciona el tipo de asistencia que necesitas
+                            </p>
+                        </div>
+
+                        {/* License Status */}
+                        <div className="p-4 border-b border-gray-200">
+                            <LicenseStatus activeLicense={activeLicense as any} />
+                        </div>
+
+                        {/* Chat Type Selection */}
+                        {!currentSession && (
+                            <div className="p-4 space-y-3">
+                                <h3 className="font-medium text-gray-900 mb-3">Iniciar nueva conversación</h3>
+
+                                <button
+                                    onClick={() => handleCreateSession("ia")}
+                                    disabled={sessionCreator.state === "submitting"}
+                                    className="w-full p-4 border border-gray-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
+                                >
+                                    <div className="flex items-center space-x-3">
+                                        <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center">
+                                            <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082a.75.75 0 00-.678.744v.812M9.75 3.104a48.424 48.424 0 011.5 0M5 14.5c0 2.208 1.792 4 4 4s4-1.792 4-4M5 14.5c0-1.01.377-1.932 1-2.626M19 14.5v-5.714a2.25 2.25 0 00-.659-1.591L14.25 3.104M19 14.5c0 2.208-1.792 4-4 4s-4-1.792-4-4m8 0c1.01-.377 1.932-1 2.626-1" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-gray-900">Asistente IA Legal</h4>
+                                            <p className="text-sm text-gray-600">Consultas rápidas con inteligencia artificial</p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h2 className="text-lg font-semibold text-gray-900">Asistente Legal</h2>
-                                        <p className="text-sm text-gray-500">Respuesta en segundos</p>
+                                </button>
+
+                                <button
+                                    onClick={() => handleCreateSession("lawyer")}
+                                    disabled={sessionCreator.state === "submitting"}
+                                    className="w-full p-4 border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors text-left"
+                                >
+                                    <div className="flex items-center space-x-3">
+                                        <div className="h-10 w-10 rounded-full bg-green-500 flex items-center justify-center">
+                                            <svg className="h-6 w-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <h4 className="font-medium text-gray-900">Consulta con Abogado</h4>
+                                            <p className="text-sm text-gray-600">Asesoría personalizada con profesionales</p>
+                                        </div>
                                     </div>
-                                </div>
-                                <div className="flex items-center text-sm text-gray-500">
-                                    <span className="flex items-center">
-                                        <span className="relative flex h-2 w-2 mr-2">
-                                            <span className="absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75 animate-ping"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                                        </span>
-                                        En línea
+                                </button>
+
+                                {sessionCreator.state === "submitting" && (
+                                    <div className="text-center text-sm text-gray-500">
+                                        Creando sesión de chat...
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Current Session Info */}
+                        {currentSession && (
+                            <div className="p-4 bg-white border-b border-gray-200">
+                                <div className="flex items-center space-x-2">
+                                    <div className="h-2 w-2 bg-green-400 rounded-full"></div>
+                                    <span className="text-sm font-medium text-gray-900">
+                                        Sesión activa
                                     </span>
                                 </div>
+                                <p className="text-xs text-gray-500 mt-1">
+                                    {currentSession.lawyer ? "Con abogado" : "Con asistente IA"}
+                                </p>
                             </div>
+                        )}
+
+                        {/* Help Section */}
+                        <div className="mt-auto p-4 bg-gray-100">
+                            <h4 className="font-medium text-gray-900 mb-2">¿Necesitas ayuda?</h4>
+                            <p className="text-xs text-gray-600 mb-3">
+                                Nuestro equipo está disponible para asistirte con cualquier consulta legal.
+                            </p>
+                            <button className="w-full text-xs bg-law-accent text-white px-3 py-2 rounded hover:bg-law-accent/90">
+                                Contactar Soporte
+                            </button>
                         </div>
+                    </div>
 
-                        {/* Chat area */}
-                        <div className="bg-gray-50 h-[60vh] overflow-y-auto p-6">
-                            <div className="space-y-6">
-                                {messages.map((message) => (
-                                    <motion.div
-                                        key={message.id}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                                    >
-                                        <div
-                                            className={`max-w-lg rounded-lg px-4 py-2 ${message.sender === 'user'
-                                                ? 'bg-law-accent text-white'
-                                                : 'bg-white text-gray-800 border border-gray-200'
-                                                }`}
-                                        >
-                                            <div className="whitespace-pre-line text-sm">
-                                                {message.text}
-                                            </div>
-                                            <div className={`text-xs mt-1 ${message.sender === 'user' ? 'text-blue-100' : 'text-gray-400'
-                                                }`}>
-                                                {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                ))}
-
-                                {loading && (
-                                    <motion.div
-                                        initial={{ opacity: 0 }}
-                                        animate={{ opacity: 1 }}
-                                        className="flex justify-start"
-                                    >
-                                        <div className="max-w-lg rounded-lg px-4 py-2 bg-white text-gray-800 border border-gray-200">
-                                            <div className="flex space-x-2">
-                                                <div className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                                                <div className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                                                <div className="w-2 h-2 rounded-full bg-gray-300 animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                )}
-
-                                <div ref={messagesEndRef} />
-                            </div>
-                        </div>
-
-                        {/* Examples */}
-                        <div className="bg-white px-6 py-4 border-t border-gray-200">
-                            <div className="flex items-center">
-                                <LightBulbIcon className="h-5 w-5 text-gray-500 mr-2" />
-                                <p className="text-sm text-gray-600">Ejemplos de preguntas:</p>
-                            </div>
-                            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                {examples.map((example, index) => (
-                                    <button
-                                        key={index}
-                                        onClick={() => handleExampleClick(example)}
-                                        className="text-left text-sm px-3 py-2 border border-gray-200 rounded-md hover:bg-gray-50 transition-colors text-gray-700"
-                                    >
-                                        {example}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Input area */}
-                        <div className="bg-white px-6 py-4 border-t border-gray-200">
-                            <form onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }} className="flex items-center">
-                                <textarea
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    onKeyDown={handleKeyPress}
-                                    placeholder="Escribe tu consulta legal..."
-                                    className="flex-1 min-h-[44px] max-h-32 overflow-auto resize-none block rounded-md border-0 py-2.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-law-accent sm:text-sm sm:leading-6"
-                                />
-                                <button
-                                    type="submit"
-                                    disabled={loading || !input.trim()}
-                                    className="ml-3 inline-flex items-center rounded-md bg-law-accent px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-law-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-law-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {loading ? (
-                                        <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                                    ) : (
-                                        <PaperAirplaneIcon className="h-5 w-5" />
-                                    )}
-                                </button>
-                            </form>
-                            <div className="mt-2 flex items-center justify-center">
-                                <div className="text-xs text-gray-500 flex items-center">
-                                    <InformationCircleIcon className="h-3 w-3 mr-1" />
-                                    Esta es una demostración. Para acceso completo, adquiere una licencia.
+                    {/* Chat Area */}
+                    <div className="flex-1 flex flex-col">
+                        {currentSession ? (
+                            <ChatContainer
+                                session={currentSession as any}
+                                initialMessages={initialMessages}
+                                userId={user.id}
+                            />
+                        ) : (
+                            <div className="flex-1 flex items-center justify-center bg-gray-50">
+                                <div className="text-center">
+                                    <svg className="mx-auto h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.691 1.358 3.061 3.049 3.061h4.203l2.477 2.477c.329.329.821.329 1.15 0l2.477-2.477h4.203c1.691 0 3.049-1.37 3.049-3.061V6.75c0-1.691-1.358-3.061-3.049-3.061H3.299c-1.691 0-3.049 1.37-3.049 3.061v8.25z" />
+                                    </svg>
+                                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                        Selecciona un tipo de chat para comenzar
+                                    </h3>
+                                    <p className="text-gray-600 max-w-md">
+                                        Elige entre nuestro asistente de IA para consultas rápidas o conecta con un abogado profesional para asesoría especializada.
+                                    </p>
                                 </div>
                             </div>
-                        </div>
-                    </motion.div>
+                        )}
+                    </div>
                 </div>
             </div>
         </Layout>

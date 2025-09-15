@@ -1,203 +1,380 @@
-import { Link } from "@remix-run/react";
-import { motion } from "framer-motion";
-import type { MetaFunction } from "@remix-run/node";
+import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { useLoaderData, useFetcher, Link } from "@remix-run/react";
+import { requireUser } from "~/lib/auth.server";
+import { getLicenseStats, getUserActiveLicense } from "~/lib/licenses.server";
+import { canClaimTrial, claimTrial } from "~/lib/trial.server";
+import { db } from "~/lib/db.server";
 import Layout from "~/components/Layout";
-import { CheckIcon } from "@heroicons/react/24/outline";
+import LicenseStatus from "~/components/LicenseStatus";
 
-export const meta: MetaFunction = () => {
-    return [
-        { title: "Licencias y Planes - Lawyer" },
-        { name: "description", content: "Conoce nuestros planes de suscripción para acceder al asistente legal Lawyer. Planes para individuos y empresas." },
-    ];
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+    const user = await requireUser(request);
+
+    console.log(`📄 Loading licenses page for user ${user.id}`);
+
+    const [licenseStats, availableLicenses, licenseHistory, trialEligibility] = await Promise.all([
+        getLicenseStats(user.id),
+        db.license.findMany({
+            where: {
+                active: true,
+                type: { not: "trial" }
+            },
+            orderBy: { priceCents: 'asc' }
+        }),
+        db.userLicense.findMany({
+            where: { userId: user.id },
+            include: { license: true },
+            orderBy: { createdAt: 'desc' },
+            take: 10
+        }),
+        canClaimTrial(user.id)
+    ]);
+
+    console.log(`📊 User ${user.id} license stats loaded: ${licenseHistory.length} licenses in history`);
+
+    // Convert BigInt fields to numbers for JSON serialization
+    const serializedAvailableLicenses = availableLicenses.map(license => ({
+        ...license,
+        priceCents: Number(license.priceCents),
+        hoursTotal: Number(license.hoursTotal)
+    }));
+
+    const serializedLicenseHistory = licenseHistory.map(userLicense => ({
+        ...userLicense,
+        hoursRemaining: Number(userLicense.hoursRemaining),
+        license: {
+            ...userLicense.license,
+            priceCents: Number(userLicense.license.priceCents),
+            hoursTotal: Number(userLicense.license.hoursTotal)
+        }
+    }));
+
+    const serializedLicenseStats = {
+        ...licenseStats,
+        totalHoursUsed: Number(licenseStats.totalHoursUsed),
+        activeLicense: licenseStats.activeLicense ? {
+            ...licenseStats.activeLicense,
+            hoursRemaining: Number(licenseStats.activeLicense.hoursRemaining),
+            license: {
+                ...licenseStats.activeLicense.license,
+                priceCents: Number(licenseStats.activeLicense.license.priceCents),
+                hoursTotal: Number(licenseStats.activeLicense.license.hoursTotal)
+            }
+        } : null
+    };
+
+    return json({
+        user,
+        licenseStats: serializedLicenseStats,
+        availableLicenses: serializedAvailableLicenses,
+        licenseHistory: serializedLicenseHistory,
+        trialEligibility
+    });
 };
 
-const plans = [
-    {
-        name: 'Básico',
-        id: 'basic',
-        price: '$19',
-        description: 'Ideal para necesidades legales ocasionales',
-        features: [
-            '20 consultas mensuales',
-            'Acceso a información legal básica',
-            'Plantillas legales simples',
-            'Soporte por email',
-        ],
-        cta: 'Comenzar gratis',
-        mostPopular: false,
-    },
-    {
-        name: 'Profesional',
-        id: 'pro',
-        price: '$49',
-        description: 'Para profesionales y pequeñas empresas',
-        features: [
-            'Consultas ilimitadas',
-            'Acceso completo a base de conocimiento legal',
-            '50+ plantillas legales personalizables',
-            'Consultas con abogados reales (2 mensuales)',
-            'Soporte prioritario',
-        ],
-        cta: 'Suscribirse ahora',
-        mostPopular: true,
-    },
-    {
-        name: 'Empresarial',
-        id: 'enterprise',
-        price: '$199',
-        description: 'Para equipos legales y empresas',
-        features: [
-            'Consultas ilimitadas para múltiples usuarios',
-            'Base de conocimiento personalizada',
-            'Plantillas legales específicas para su industria',
-            'Consultas ilimitadas con abogados especializados',
-            'API de integración',
-            'Soporte 24/7',
-        ],
-        cta: 'Contactar ventas',
-        mostPopular: false,
-    },
-];
+export const action = async ({ request }: ActionFunctionArgs) => {
+    const user = await requireUser(request);
+    const formData = await request.formData();
+    const action = formData.get("action");
 
-const faqs = [
-    {
-        question: '¿Cómo funciona la prueba gratuita?',
-        answer:
-            'La prueba gratuita te da acceso completo al plan Básico durante 7 días. No necesitas ingresar información de pago para comenzar. Te enviaremos un recordatorio antes de que finalice tu período de prueba.',
-    },
-    {
-        question: '¿Puedo cambiar de plan en cualquier momento?',
-        answer:
-            'Sí, puedes actualizar o cambiar tu plan en cualquier momento. Si actualizas, el cambio se aplicará inmediatamente. Si bajas de nivel, el cambio se aplicará en tu próximo ciclo de facturación.',
-    },
-    {
-        question: '¿Las respuestas de la IA tienen validez legal?',
-        answer:
-            'Las respuestas proporcionadas por nuestro asistente de IA son informativas y no constituyen asesoría legal formal. Para casos complejos o que requieran representación legal, siempre recomendamos consultar con un abogado calificado.',
-    },
-    {
-        question: '¿Cómo funciona la facturación?',
-        answer:
-            'La facturación se realiza mensualmente en la fecha en que te suscribiste. Aceptamos todas las tarjetas de crédito principales y transferencias bancarias para planes empresariales. Emitimos facturas electrónicas que cumplen con los requisitos fiscales.',
-    },
-    {
-        question: '¿Qué pasa si excedo mi límite de consultas?',
-        answer:
-            'En el plan Básico, si excedes tu límite de 20 consultas, tendrás la opción de esperar hasta el próximo ciclo o actualizar a un plan superior. No cobramos automáticamente por consultas adicionales sin tu consentimiento.',
-    },
-];
+    console.log(`🎯 License action requested by user ${user.id}: ${action}`);
 
-export default function LicenciasPage() {
+    switch (action) {
+        case "claim-trial": {
+            try {
+                const trialLicense = await claimTrial(user.id);
+                console.log(`🎉 Trial claimed successfully by user ${user.id}`);
+                return json({
+                    success: true,
+                    message: "¡Trial gratuito activado! Ya puedes usar el chat."
+                });
+            } catch (error) {
+                console.error(`💥 Error claiming trial for user ${user.id}:`, error);
+                return json({
+                    success: false,
+                    error: error instanceof Error ? error.message : "Error al activar el trial"
+                }, { status: 400 });
+            }
+        }
+
+        default:
+            console.log(`❌ Invalid action: ${action}`);
+            return json({ error: "Acción no válida" }, { status: 400 });
+    }
+};
+
+type ActionData = {
+    success?: boolean;
+    message?: string;
+    error?: string;
+};
+
+export default function Licencias() {
+    const { user, licenseStats, availableLicenses, licenseHistory, trialEligibility } = useLoaderData<typeof loader>();
+    const claimTrialFetcher = useFetcher<ActionData>();
+
+    const formatCurrency = (cents: number) => {
+        return new Intl.NumberFormat('es-CO', {
+            style: 'currency',
+            currency: 'COP',
+            minimumFractionDigits: 0
+        }).format(cents / 100);
+    };
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'active': return 'bg-green-100 text-green-800';
+            case 'expired': return 'bg-red-100 text-red-800';
+            default: return 'bg-gray-100 text-gray-800';
+        }
+    };
+
     return (
-        <Layout>
-            <div className="bg-white">
-                <div className="mx-auto max-w-7xl px-6 py-24 sm:py-32 lg:px-8 lg:py-40">
-                    <div className="mx-auto max-w-4xl text-center">
-                        <h1 className="text-base font-semibold leading-7 text-law-accent">Precios</h1>
-                        <p className="mt-2 text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-                            Planes que se adaptan a tus necesidades
-                        </p>
-                    </div>
-                    <p className="mx-auto mt-6 max-w-2xl text-center text-lg leading-8 text-gray-600">
-                        Elige el plan que mejor se adapte a tus necesidades legales y comienza a resolver tus consultas jurídicas hoy mismo.
+        <Layout user={user}>
+            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+                <div className="mb-8">
+                    <h1 className="text-3xl font-bold text-gray-900">Mis Licencias</h1>
+                    <p className="mt-2 text-gray-600">
+                        Gestiona tus planes de acceso y consulta tu historial de uso.
                     </p>
+                </div>
 
-                    {/* Pricing tiers */}
-                    <div className="isolate mx-auto mt-16 grid max-w-md grid-cols-1 gap-8 lg:mx-0 lg:max-w-none lg:grid-cols-3">
-                        {plans.map((plan, planIdx) => (
-                            <motion.div
-                                key={plan.id}
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.5, delay: planIdx * 0.1 }}
-                                className={`rounded-3xl p-8 ring-1 relative ${plan.mostPopular ? 'bg-gray-900 ring-gray-900' : 'bg-white ring-gray-200'
-                                    }`}
-                            >
-                                {plan.mostPopular && (
-                                    <div className="absolute inset-x-0 top-0 -translate-y-1/2 transform flex justify-center">
-                                        <div className="inline-flex rounded-full bg-law-accent px-4 py-1 text-sm font-semibold text-white">
-                                            Más Popular
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Current License Status */}
+                    <div className="lg:col-span-2">
+                        <div className="mb-6">
+                            <h2 className="text-xl font-semibold text-gray-900 mb-4">Estado Actual</h2>
+                            <LicenseStatus activeLicense={licenseStats.activeLicense ? {
+                                ...licenseStats.activeLicense,
+                                hoursRemaining: Number(licenseStats.activeLicense.hoursRemaining),
+                                expiresAt: licenseStats.activeLicense.expiresAt ? new Date(licenseStats.activeLicense.expiresAt) : null,
+                                license: {
+                                    ...licenseStats.activeLicense.license,
+                                    hoursTotal: Number(licenseStats.activeLicense.license.hoursTotal)
+                                }
+                            } : null} />
+
+                            {/* Trial Claim Section */}
+                            {!licenseStats.activeLicense && trialEligibility.canClaim && (
+                                <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-6">
+                                    <div className="flex items-center">
+                                        <div className="flex-shrink-0">
+                                            <svg className="h-8 w-8 text-blue-500" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124c-.85 0-1.673.133-2.5.374C8.243 3.094 5 6.795 5 11.25v.875c0 .621.504 1.125 1.125 1.125z" />
+                                            </svg>
+                                        </div>
+                                        <div className="ml-4 flex-1">
+                                            <h3 className="text-lg font-medium text-blue-900">
+                                                ¡Reclama tu Trial Gratuito!
+                                            </h3>
+                                            <p className="mt-2 text-sm text-blue-700">
+                                                Tienes derecho a 2 horas gratuitas para probar nuestro asistente legal.
+                                                ¡No necesitas tarjeta de crédito!
+                                            </p>
+
+                                            {claimTrialFetcher.data?.success && (
+                                                <div className="mt-3 text-sm font-medium text-green-700">
+                                                    {claimTrialFetcher.data.message}
+                                                </div>
+                                            )}
+
+                                            {claimTrialFetcher.data?.error && (
+                                                <div className="mt-3 text-sm font-medium text-red-700">
+                                                    {claimTrialFetcher.data.error}
+                                                </div>
+                                            )}
+
+                                            <div className="mt-4">
+                                                <claimTrialFetcher.Form method="post">
+                                                    <input type="hidden" name="action" value="claim-trial" />
+                                                    <button
+                                                        type="submit"
+                                                        disabled={claimTrialFetcher.state === "submitting"}
+                                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                                                    >
+                                                        {claimTrialFetcher.state === "submitting" ? (
+                                                            <>
+                                                                <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                                </svg>
+                                                                Activando...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <svg className="-ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 109.375 7.5H12m0-2.625V7.5m0-2.625A2.625 2.625 0 1114.625 7.5H12m0 0V21m-8.625-9.75h18c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124c-.85 0-1.673.133-2.5.374C8.243 3.094 5 6.795 5 11.25v.875c0 .621.504 1.125 1.125 1.125z" />
+                                                                </svg>
+                                                                Reclamar Trial Gratuito
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </claimTrialFetcher.Form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {!licenseStats.activeLicense && !trialEligibility.canClaim && (
+                                <div className="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                                    <p className="text-sm text-gray-600">
+                                        {trialEligibility.reason || "No tienes licencias activas"}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Available Plans */}
+                        <div className="mb-8">
+                            <h2 className="text-xl font-semibold text-gray-900 mb-4">Planes Disponibles</h2>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {availableLicenses.map((license) => (
+                                    <div key={license.id} className="bg-white border border-gray-200 rounded-lg p-6 hover:border-law-accent transition-colors">
+                                        <div className="text-center">
+                                            <h3 className="text-lg font-semibold text-gray-900">{license.name}</h3>
+                                            <div className="mt-4">
+                                                <span className="text-3xl font-bold text-gray-900">
+                                                    {formatCurrency(Number(license.priceCents))}
+                                                </span>
+                                            </div>
+                                            <p className="mt-2 text-sm text-gray-500">
+                                                {Number(license.hoursTotal)} horas • {license.validityDays} días
+                                            </p>
+                                        </div>
+
+                                        <div className="mt-6">
+                                            <ul className="space-y-2 text-sm text-gray-600">
+                                                <li className="flex items-center">
+                                                    <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                                    </svg>
+                                                    Acceso al chat de IA legal
+                                                </li>
+                                                {license.appliesTo === "both" && (
+                                                    <li className="flex items-center">
+                                                        <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                                        </svg>
+                                                        Consultas con abogados
+                                                    </li>
+                                                )}
+                                                <li className="flex items-center">
+                                                    <svg className="h-4 w-4 text-green-500 mr-2" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                                    </svg>
+                                                    Soporte 24/7
+                                                </li>
+                                            </ul>
+                                        </div>
+
+                                        <div className="mt-6">
+                                            <button
+                                                className="w-full bg-law-accent text-white px-4 py-2 rounded-md hover:bg-law-accent/90 transition-colors"
+                                                disabled={!!licenseStats.activeLicense}
+                                            >
+                                                {licenseStats.activeLicense ? 'Ya tienes una licencia activa' : 'Comprar Plan'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* License History */}
+                        <div>
+                            <h2 className="text-xl font-semibold text-gray-900 mb-4">Historial de Licencias</h2>
+                            <div className="bg-white shadow rounded-lg overflow-hidden">
+                                {licenseHistory.length > 0 ? (
+                                    <div className="divide-y divide-gray-200">
+                                        {licenseHistory.map((userLicense) => (
+                                            <div key={userLicense.id} className="p-6">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <h3 className="text-sm font-medium text-gray-900">
+                                                            {userLicense.license.name}
+                                                            {userLicense.source === "trial" && (
+                                                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                                                    Trial
+                                                                </span>
+                                                            )}
+                                                        </h3>
+                                                        <div className="mt-1 text-sm text-gray-500">
+                                                            <span>Horas restantes: {Number(userLicense.hoursRemaining).toFixed(1)}</span>
+                                                            {userLicense.expiresAt && (
+                                                                <span className="ml-4">
+                                                                    Expira: {new Date(userLicense.expiresAt).toLocaleDateString('es-CO')}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs text-gray-400 mt-1">
+                                                            Creada: {new Date(userLicense.createdAt).toLocaleDateString('es-CO')}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(userLicense.status)}`}>
+                                                            {userLicense.status === 'active' ? 'Activa' :
+                                                                userLicense.status === 'expired' ? 'Expirada' : userLicense.status}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="p-6 text-center text-gray-500">
+                                        <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0.621 0 1.125-.504 1.125-1.125V9.375c0-.621.504-1.125 1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z" />
+                                        </svg>
+                                        <p className="mt-2">No tienes historial de licencias</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Sidebar with Stats */}
+                    <div className="space-y-6">
+                        <div className="bg-white shadow rounded-lg p-6">
+                            <h3 className="text-lg font-medium text-gray-900 mb-4">Estadísticas de Uso</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500">Horas usadas en total</span>
+                                        <span className="font-medium">{Number(licenseStats.totalHoursUsed).toFixed(1)}h</span>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-500">Sesiones totales</span>
+                                        <span className="font-medium">{licenseStats.totalSessions}</span>
+                                    </div>
+                                </div>
+                                {licenseStats.lastSession && (
+                                    <div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-500">Última sesión</span>
+                                            <span className="font-medium">
+                                                {new Date(licenseStats.lastSession).toLocaleDateString('es-CO')}
+                                            </span>
                                         </div>
                                     </div>
                                 )}
-                                <div className="flex items-center justify-between gap-x-4">
-                                    <h2 id={plan.id} className={`text-lg font-semibold leading-8 ${plan.mostPopular ? 'text-white' : 'text-gray-900'}`}>
-                                        {plan.name}
-                                    </h2>
-                                </div>
-                                <p className={`mt-4 text-sm leading-6 ${plan.mostPopular ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    {plan.description}
-                                </p>
-                                <p className="mt-6 flex items-baseline gap-x-1">
-                                    <span className={`text-4xl font-bold tracking-tight ${plan.mostPopular ? 'text-white' : 'text-gray-900'}`}>{plan.price}</span>
-                                    <span className={`text-sm font-semibold leading-6 ${plan.mostPopular ? 'text-gray-300' : 'text-gray-600'}`}>/mes</span>
-                                </p>
-                                <ul role="list" className={`mt-8 space-y-3 text-sm leading-6 ${plan.mostPopular ? 'text-gray-300' : 'text-gray-600'}`}>
-                                    {plan.features.map((feature) => (
-                                        <li key={feature} className="flex gap-x-3">
-                                            <CheckIcon className={`h-6 w-5 flex-none ${plan.mostPopular ? 'text-white' : 'text-law-accent'}`} aria-hidden="true" />
-                                            {feature}
-                                        </li>
-                                    ))}
-                                </ul>
-                                <Link
-                                    to={plan.id === 'enterprise' ? '/contacto' : '/registro'}
-                                    aria-describedby={plan.id}
-                                    className={`mt-8 block rounded-md px-3.5 py-2 text-center text-sm font-semibold leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 ${plan.mostPopular
-                                        ? 'bg-white text-gray-900 hover:bg-gray-100 focus-visible:outline-white'
-                                        : 'bg-law-accent text-white hover:bg-law-accent/90 focus-visible:outline-law-accent'
-                                        }`}
-                                >
-                                    {plan.cta}
-                                </Link>
-                            </motion.div>
-                        ))}
-                    </div>
-
-                    {/* FAQs */}
-                    <div className="mx-auto mt-32 max-w-7xl divide-y divide-gray-900/10 px-6 lg:px-8">
-                        <h2 className="text-2xl font-bold leading-10 tracking-tight text-gray-900">Preguntas frecuentes</h2>
-                        <dl className="mt-10 space-y-8 divide-y divide-gray-900/10">
-                            {faqs.map((faq, faqIdx) => (
-                                <motion.div
-                                    key={faqIdx}
-                                    className="pt-8 lg:grid lg:grid-cols-12 lg:gap-8"
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.5, delay: faqIdx * 0.1 }}
-                                >
-                                    <dt className="text-base font-semibold leading-7 text-gray-900 lg:col-span-5">{faq.question}</dt>
-                                    <dd className="mt-4 lg:col-span-7 lg:mt-0">
-                                        <p className="text-base leading-7 text-gray-600">{faq.answer}</p>
-                                    </dd>
-                                </motion.div>
-                            ))}
-                        </dl>
-                    </div>
-
-                    {/* CTA */}
-                    <div className="relative isolate mt-32 px-6 py-16 sm:rounded-3xl sm:px-24 sm:py-24 lg:mt-40 lg:py-32 xl:px-32">
-                        <div className="absolute inset-0 overflow-hidden rounded-3xl">
-                            <div className="absolute inset-0 bg-law-accent/20" />
-                        </div>
-                        <div className="relative mx-auto max-w-2xl text-center">
-                            <h2 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-                                Potencia tu conocimiento legal
-                            </h2>
-                            <p className="mt-6 text-lg leading-8 text-gray-600">
-                                Únete a miles de personas y empresas que utilizan Lawyer para resolver sus dudas legales de forma eficiente y económica.
-                            </p>
-                            <div className="mt-10 flex items-center justify-center gap-x-6">
-                                <Link
-                                    to="/registro"
-                                    className="rounded-md bg-law-accent px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-law-accent/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-law-accent"
-                                >
-                                    Comenzar ahora
-                                </Link>
-                                <Link to="/chat" className="text-sm font-semibold leading-6 text-gray-900">
-                                    Probar chat <span aria-hidden="true">→</span>
-                                </Link>
                             </div>
+                        </div>
+
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                            <h3 className="text-lg font-medium text-blue-900 mb-2">¿Necesitas ayuda?</h3>
+                            <p className="text-sm text-blue-700 mb-4">
+                                Contáctanos si tienes preguntas sobre los planes o necesitas asistencia.
+                            </p>
+                            <Link
+                                to="/contacto"
+                                className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200"
+                            >
+                                Contactar Soporte
+                            </Link>
                         </div>
                     </div>
                 </div>

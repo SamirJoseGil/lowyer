@@ -221,11 +221,15 @@ export async function sendMessage(
 
         console.log(`📚 Using conversation history with ${conversationHistory.length} previous messages`);
 
-        // Generar respuesta con Gemini
-        const geminiResponse = await getGeminiResponse(content, conversationHistory);
+        // Generar respuesta con Gemini (ahora con cache y contexto legal)
+        const geminiResponse = await getGeminiResponse(content, conversationHistory, {
+          userId: senderId,
+          sessionId: sessionId,
+          useCache: true
+        });
 
         if (geminiResponse.success && geminiResponse.response) {
-          console.log(`🎯 Gemini response generated successfully`);
+          console.log(`🎯 Gemini response generated successfully ${geminiResponse.fromCache ? '(from cache)' : '(fresh)'}`);
           
           // Crear mensaje de respuesta de IA
           aiResponse = await db.message.create({

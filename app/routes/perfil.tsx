@@ -4,7 +4,6 @@ import { Form, useActionData, useLoaderData } from "@remix-run/react";
 import { useEffect, useRef } from "react";
 import { requireUser } from "~/lib/auth.server";
 import { db } from "~/lib/db.server";
-import Layout from "~/components/Layout";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const user = await requireUser(request);
@@ -90,7 +89,7 @@ export default function Perfil() {
     }, [actionData]);
 
     return (
-        <Layout user={user}>
+        <div className="flex min-h-screen flex-col">
             <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-gray-900">Mi Perfil</h1>
@@ -307,6 +306,6 @@ export default function Perfil() {
                     </div>
                 </div>
             </div>
-        </Layout>
+        </div>
     );
 }

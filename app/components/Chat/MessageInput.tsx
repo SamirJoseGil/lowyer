@@ -1,105 +1,151 @@
-import { useState, useRef, KeyboardEvent } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useFetcher } from "@remix-run/react";
+import { motion } from "framer-motion";
 
-type MessageInputProps = {
-    onSendMessage: (content: string) => void;
+interface MessageInputProps {
+    sessionId: string;
+    onMessageSent?: (message: any) => void;
     disabled?: boolean;
-    placeholder?: string;
-};
+}
 
-export default function MessageInput({
-    onSendMessage,
-    disabled = false,
-    placeholder = "Escribe tu mensaje..."
-}: MessageInputProps) {
+export default function MessageInput({ sessionId, onMessageSent, disabled }: MessageInputProps) {
     const [message, setMessage] = useState("");
-    const [isComposing, setIsComposing] = useState(false);
+    const [isTyping, setIsTyping] = useState(false);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const fetcher = useFetcher();
 
-    const handleSubmit = () => {
-        if (message.trim() && !disabled) {
-            onSendMessage(message.trim());
-            setMessage("");
+    const isSubmitting = fetcher.state === "submitting";
+    const maxLength = 2000;
 
-            // Reset textarea height
-            if (textareaRef.current) {
-                textareaRef.current.style.height = 'auto';
+    useEffect(() => {
+        if (fetcher.data) {
+            if (typeof fetcher.data === 'object' && fetcher.data !== null && 'success' in fetcher.data) {
+                if (fetcher.data.success) {
+                    setMessage("");
+                    onMessageSent?.(fetcher.data);
+                    console.log(`✅ Message sent successfully`);
+                } else {
+                    console.error(`❌ Error sending message:`, (fetcher.data as { error?: string }).error);
+                }
             }
         }
-    };
+    }, [fetcher.data, onMessageSent]);
 
-    const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
-            e.preventDefault();
-            handleSubmit();
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!message.trim() || isSubmitting || disabled) {
+            return;
+        }
+
+        console.log(`📤 Sending message to session ${sessionId}`);
+
+        try {
+            // Enviar como JSON usando fetch
+            const response = await fetch("/api/chat/send", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    sessionId,
+                    content: message.trim(),
+                    senderRole: "user"
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                setMessage("");
+                onMessageSent?.(result);
+                console.log(`✅ Message sent successfully`);
+            } else {
+                console.error(`❌ Error sending message:`, result.error);
+            }
+        } catch (error) {
+            console.error(`💥 Error in message submit:`, error);
         }
     };
 
-    const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit(e as any);
+        }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setMessage(e.target.value);
 
         // Auto-resize textarea
-        const textarea = e.target;
-        textarea.style.height = 'auto';
-        textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+        if (textareaRef.current) {
+            textareaRef.current.style.height = "auto";
+            textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+        }
+
+        // Typing indicator (opcional para implementación futura)
+        if (!isTyping) {
+            setIsTyping(true);
+            setTimeout(() => setIsTyping(false), 1000);
+        }
     };
 
-    const characterCount = message.length;
-    const maxCharacters = 2000;
-    const isOverLimit = characterCount > maxCharacters;
-
     return (
-        <div className="border-t border-gray-200 p-4 bg-white">
-            <div className="flex items-end space-x-3">
-                <div className="flex-1">
+        <div className="border-t border-gray-200 bg-white p-4">
+            <form onSubmit={handleSubmit} className="flex items-end space-x-3">
+                <div className="flex-1 relative">
                     <textarea
                         ref={textareaRef}
                         value={message}
-                        onChange={handleInput}
+                        onChange={handleChange}
                         onKeyDown={handleKeyDown}
-                        onCompositionStart={() => setIsComposing(true)}
-                        onCompositionEnd={() => setIsComposing(false)}
-                        placeholder={placeholder}
-                        disabled={disabled}
+                        placeholder="Escribe tu consulta legal aquí..."
+                        disabled={disabled || isSubmitting}
+                        maxLength={maxLength}
                         rows={1}
-                        className={`w-full resize-none rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-law-accent focus:border-transparent transition-colors ${disabled
-                                ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
-                                : 'border-gray-300 hover:border-gray-400'
-                            } ${isOverLimit ? 'border-red-300 focus:ring-red-500' : ''
-                            }`}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-2xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 bg-gray-50 hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
                         style={{
-                            minHeight: '40px',
-                            maxHeight: '120px'
+                            minHeight: "48px",
+                            maxHeight: "120px"
                         }}
                     />
 
                     {/* Character counter */}
-                    <div className={`text-xs mt-1 ${isOverLimit ? 'text-red-500' : 'text-gray-400'}`}>
-                        {characterCount}/{maxCharacters}
+                    <div className="absolute bottom-2 right-3 text-xs text-gray-400">
+                        {message.length}/{maxLength}
                     </div>
                 </div>
 
-                <button
-                    onClick={handleSubmit}
-                    disabled={disabled || !message.trim() || isOverLimit}
-                    className="p-2 bg-law-accent text-white rounded-lg hover:bg-law-accent/90 focus:outline-none focus:ring-2 focus:ring-law-accent focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    title="Enviar mensaje (Enter)"
+                <motion.button
+                    type="submit"
+                    disabled={!message.trim() || isSubmitting || disabled}
+                    className="h-12 w-12 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-full flex items-center justify-center hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg hover:shadow-xl"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                 >
-                    {disabled ? (
-                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
+                    {isSubmitting ? (
+                        <motion.div
+                            className="h-5 w-5 border-2 border-white border-t-transparent rounded-full"
+                            animate={{ rotate: 360 }}
+                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        />
                     ) : (
-                        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                         </svg>
                     )}
-                </button>
-            </div>
+                </motion.button>
+            </form>
 
-            {/* Help text */}
-            <div className="text-xs text-gray-500 mt-2">
-                Presiona Enter para enviar, Shift+Enter para nueva línea
+            {/* Tips */}
+            <div className="mt-2 text-xs text-gray-500 flex items-center justify-between">
+                <span>Presiona Enter para enviar, Shift+Enter para nueva línea</span>
+                {disabled && (
+                    <span className="text-red-500 font-medium">
+                        Sesión inactiva
+                    </span>
+                )}
             </div>
         </div>
     );

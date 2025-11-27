@@ -3,7 +3,6 @@ import { json, redirect } from "@remix-run/node";
 import { useLoaderData, Link } from "@remix-run/react";
 import { requireUser } from "~/lib/auth.server";
 import { isAdmin, isLawyer } from "~/lib/permissions.server";
-import Layout from "~/components/Layout";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const user = await requireUser(request);
@@ -27,7 +26,7 @@ export default function Dashboard() {
     const { user } = useLoaderData<typeof loader>();
 
     return (
-        <Layout user={user}>
+        <div className="flex min-h-screen flex-col">
             <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-gray-900">
@@ -139,6 +138,6 @@ export default function Dashboard() {
                     </div>
                 </div>
             </div>
-        </Layout>
+        </div>
     );
 }

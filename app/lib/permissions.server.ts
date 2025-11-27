@@ -170,15 +170,15 @@ export function isRole(user: any, role: UserRole): boolean {
 }
 
 export function isAdmin(user: any): boolean {
-  return isRole(user, ROLES.ADMIN) || isRole(user, ROLES.SUPERADMIN);
+  return user?.role?.name === "admin" || user?.role?.name === "superadmin";
 }
 
 export function isSuperAdmin(user: any): boolean {
-  return isRole(user, ROLES.SUPERADMIN);
+  return user?.role?.name === "superadmin";
 }
 
 export function isLawyer(user: any): boolean {
-  return isRole(user, ROLES.ABOGADO);
+  return user?.role?.name === "abogado";
 }
 
 export function isUser(user: any): boolean {

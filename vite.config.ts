@@ -7,8 +7,11 @@ declare module "@remix-run/node" {
     v3_singleFetch: true;
   }
 }
-
 export default defineConfig({
+  server: {
+    host: true,
+    allowedHosts: ["jaylah-uncancelled-nickolas.ngrok-free.dev"],
+  },
   plugins: [
     remix({
       future: {

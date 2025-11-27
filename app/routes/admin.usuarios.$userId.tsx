@@ -2,9 +2,8 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { useLoaderData, Form, Link } from "@remix-run/react";
 import { requireUser } from "~/lib/auth.server";
-import { isAdmin } from "~/lib/permissions.server";
+import { isAdmin, isSuperAdmin } from "~/lib/permissions.server";
 import { db } from "~/lib/db.server";
-import Layout from "~/components/Layout";
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     const user = await requireUser(request);
@@ -81,6 +80,24 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
         return json({ error: "ID de usuario requerido" }, { status: 400 });
     }
 
+    // Get target user to check if it's a superadmin
+    const targetUser = await db.user.findUnique({
+        where: { id: userId },
+        include: { role: true }
+    });
+
+    if (!targetUser) {
+        return json({ error: "Usuario no encontrado" }, { status: 404 });
+    }
+
+    // Prevent regular admins from modifying superadmins
+    const isCurrentUserSuperAdmin = isSuperAdmin(user);
+    const isTargetUserSuperAdmin = targetUser.role.name === 'superadmin';
+
+    if (isTargetUserSuperAdmin && !isCurrentUserSuperAdmin) {
+        return json({ error: "No tienes permisos para modificar este usuario" }, { status: 403 });
+    }
+
     const formData = await request.formData();
     const action = formData.get("action");
 
@@ -90,6 +107,14 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
                 const newRoleId = parseInt(formData.get("roleId")?.toString() || "");
                 if (!newRoleId) {
                     return json({ error: "ID de rol requerido" }, { status: 400 });
+                }
+
+                // Get the new role to check if it's superadmin
+                const newRole = await db.role.findUnique({ where: { id: newRoleId } });
+
+                // Only superadmins can assign superadmin role
+                if (newRole?.name === 'superadmin' && !isCurrentUserSuperAdmin) {
+                    return json({ error: "No tienes permisos para asignar rol de SuperAdmin" }, { status: 403 });
                 }
 
                 await db.user.update({
@@ -110,9 +135,9 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
             }
 
             case "toggle-status": {
-                const targetUser = await db.user.findUnique({ where: { id: userId } });
-                if (!targetUser) {
-                    return json({ error: "Usuario no encontrado" }, { status: 404 });
+                // Prevent status changes to superadmins by regular admins
+                if (isTargetUserSuperAdmin && !isCurrentUserSuperAdmin) {
+                    return json({ error: "No puedes cambiar el estado de un SuperAdmin" }, { status: 403 });
                 }
 
                 const newStatus = targetUser.status === "active" ? "inactive" : "active";
@@ -145,6 +170,20 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 export default function AdminUserDetail() {
     const { user, targetUser, roles, auditLogs, userMetrics } = useLoaderData<typeof loader>();
 
+    const isCurrentUserSuperAdmin = isSuperAdmin(user);
+    const isTargetUserSuperAdmin = targetUser.role.name === 'superadmin';
+
+    // Check if current user can modify this target user
+    const canModifyUser = isCurrentUserSuperAdmin || !isTargetUserSuperAdmin;
+
+    // Filter roles that current user can assign
+    const availableRoles = roles.filter(role => {
+        if (role.name === 'superadmin') {
+            return isCurrentUserSuperAdmin; // Only superadmins can assign superadmin role
+        }
+        return true;
+    });
+
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'active': return 'bg-green-100 text-green-800';
@@ -169,7 +208,7 @@ export default function AdminUserDetail() {
         : targetUser.email;
 
     return (
-        <Layout user={user}>
+        <div className="flex min-h-screen flex-col">
             <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
                 {/* Header */}
                 <div className="mb-8">
@@ -324,6 +363,11 @@ export default function AdminUserDetail() {
                         <div className="bg-white shadow rounded-lg">
                             <div className="px-6 py-4 border-b border-gray-200">
                                 <h3 className="text-lg font-medium text-gray-900">Acciones</h3>
+                                {isTargetUserSuperAdmin && !isCurrentUserSuperAdmin && (
+                                    <p className="text-sm text-red-600 mt-1">
+                                        Solo SuperAdmins pueden modificar otros SuperAdmins
+                                    </p>
+                                )}
                             </div>
                             <div className="p-6 space-y-4">
                                 {/* Change Role */}
@@ -337,9 +381,10 @@ export default function AdminUserDetail() {
                                             name="roleId"
                                             id="roleId"
                                             defaultValue={targetUser.roleId}
-                                            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-law-accent focus:outline-none focus:ring-law-accent"
+                                            disabled={!canModifyUser}
+                                            className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-law-accent focus:outline-none focus:ring-law-accent disabled:bg-gray-100 disabled:cursor-not-allowed"
                                         >
-                                            {roles.map((role) => (
+                                            {availableRoles.map((role) => (
                                                 <option key={role.id} value={role.id}>
                                                     {role.name}
                                                 </option>
@@ -347,7 +392,8 @@ export default function AdminUserDetail() {
                                         </select>
                                         <button
                                             type="submit"
-                                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-law-accent hover:bg-law-accent/90"
+                                            disabled={!canModifyUser}
+                                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-law-accent hover:bg-law-accent/90 disabled:bg-gray-400 disabled:cursor-not-allowed"
                                         >
                                             Cambiar
                                         </button>
@@ -359,9 +405,10 @@ export default function AdminUserDetail() {
                                     <input type="hidden" name="action" value="toggle-status" />
                                     <button
                                         type="submit"
-                                        className={`w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${targetUser.status === "active"
-                                            ? "bg-red-600 hover:bg-red-700"
-                                            : "bg-green-600 hover:bg-green-700"
+                                        disabled={!canModifyUser}
+                                        className={`w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white disabled:bg-gray-400 disabled:cursor-not-allowed ${targetUser.status === "active"
+                                                ? "bg-red-600 hover:bg-red-700"
+                                                : "bg-green-600 hover:bg-green-700"
                                             }`}
                                     >
                                         {targetUser.status === "active" ? "Desactivar Usuario" : "Activar Usuario"}
@@ -399,6 +446,6 @@ export default function AdminUserDetail() {
                     </div>
                 </div>
             </div>
-        </Layout>
+        </div>
     );
 }

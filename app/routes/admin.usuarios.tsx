@@ -4,7 +4,6 @@ import { useLoaderData, useSearchParams, Form, Link } from "@remix-run/react";
 import { requireUser } from "~/lib/auth.server";
 import { isAdmin, PERMISSIONS, hasPermission } from "~/lib/permissions.server";
 import { db } from "~/lib/db.server";
-import Layout from "~/components/Layout";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const user = await requireUser(request);
@@ -154,15 +153,26 @@ export default function AdminUsuarios() {
     };
 
     return (
-        <Layout user={user}>
+        <div className="flex min-h-screen flex-col">
             <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
                 <div className="mb-8">
                     <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Gestión de Usuarios</h1>
-                            <p className="mt-2 text-gray-600">
-                                Administra usuarios, roles y estados del sistema.
-                            </p>
+                        <div className="flex items-center space-x-4">
+                            <Link
+                                to="/admin"
+                                className="inline-flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                </svg>
+                                Volver al Dashboard
+                            </Link>
+                            <div>
+                                <h1 className="text-3xl font-bold text-gray-900">Gestión de Usuarios</h1>
+                                <p className="mt-2 text-gray-600">
+                                    Administra usuarios, roles y estados del sistema.
+                                </p>
+                            </div>
                         </div>
                         <div className="text-sm text-gray-500">
                             Total: {totalUsers} usuarios
@@ -306,8 +316,8 @@ export default function AdminUsuarios() {
                                                     <button
                                                         type="submit"
                                                         className={`inline-flex items-center px-2.5 py-1.5 rounded text-xs font-medium ${userData.status === "active"
-                                                                ? "bg-red-100 text-red-700 hover:bg-red-200"
-                                                                : "bg-green-100 text-green-700 hover:bg-green-200"
+                                                            ? "bg-red-100 text-red-700 hover:bg-red-200"
+                                                            : "bg-green-100 text-green-700 hover:bg-green-200"
                                                             }`}
                                                     >
                                                         {userData.status === "active" ? "Desactivar" : "Activar"}
@@ -364,8 +374,8 @@ export default function AdminUsuarios() {
                                                 key={page}
                                                 to={`?${new URLSearchParams({ ...Object.fromEntries(searchParams), page: page.toString() })}`}
                                                 className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${page === currentPage
-                                                        ? 'z-10 bg-law-accent border-law-accent text-white'
-                                                        : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                                                    ? 'z-10 bg-law-accent border-law-accent text-white'
+                                                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
                                                     }`}
                                             >
                                                 {page}
@@ -378,6 +388,6 @@ export default function AdminUsuarios() {
                     )}
                 </div>
             </div>
-        </Layout>
+        </div>
     );
 }

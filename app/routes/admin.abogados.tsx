@@ -4,7 +4,7 @@ import { useLoaderData, Form, Link } from "@remix-run/react";
 import { requireUser } from "~/lib/auth.server";
 import { isAdmin } from "~/lib/permissions.server";
 import { db } from "~/lib/db.server";
-import Layout from "~/components/Layout";
+import { motion } from "framer-motion";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const user = await requireUser(request);
@@ -168,34 +168,73 @@ export default function AdminAbogados() {
     };
 
     return (
-        <Layout user={user}>
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-                <div className="mb-8">
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <h1 className="text-3xl font-bold text-gray-900">Gestión de Abogados</h1>
-                            <p className="mt-2 text-gray-600">
-                                Verifica y gestiona los perfiles de abogados del sistema.
-                            </p>
+        <div className="min-h-screen bg-gradient-to-br from-white via-green-50/30 to-emerald-50/20">
+            {/* Decorative Background */}
+            <div className="fixed inset-0 opacity-30 pointer-events-none">
+                <div className="absolute top-20 right-20 w-96 h-96 bg-gradient-to-br from-green-200/40 to-emerald-200/20 rounded-full blur-3xl" />
+                <div className="absolute bottom-40 left-20 w-80 h-80 bg-gradient-to-r from-teal-200/30 to-green-200/20 rounded-full blur-3xl" />
+            </div>
+
+            <div className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+                {/* Header con estilo editorial */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6 }}
+                    className="mb-12"
+                >
+                    <div className="h-1 bg-gradient-to-r from-green-400 via-emerald-400 to-teal-400 mb-6 rounded-full" />
+
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-4">
+                            <Link
+                                to="/admin"
+                                className="inline-flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                            >
+                                <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                                </svg>
+                                Volver al Dashboard
+                            </Link>
+                            <div>
+                                <h1 className="text-4xl font-bold text-gray-900"
+                                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                    Gestión de Abogados ⚖️
+                                </h1>
+                                <p className="text-lg text-gray-600 italic mt-2"
+                                   style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                    Verifica y administra los profesionales del derecho
+                                </p>
+                            </div>
                         </div>
-                        <div className="text-sm text-gray-500">
+                        <div className="text-sm font-medium text-gray-500"
+                             style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
                             Total: {totalLawyers} abogados
                         </div>
                     </div>
-                </div>
+
+                    <div className="h-0.5 bg-gradient-to-r from-green-400 via-transparent to-emerald-400" />
+                </motion.div>
 
                 {/* Filters */}
-                <div className="mb-6 bg-white p-4 rounded-lg shadow">
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.3 }}
+                    className="mb-8 bg-white shadow-lg rounded-xl p-6 border-2 border-green-100"
+                    style={{ borderRadius: "2px" }}
+                >
                     <Form method="get" className="flex items-center space-x-4">
-                        <div>
-                            <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                                Estado
+                        <div className="flex-1">
+                            <label htmlFor="status" className="block text-sm font-semibold text-gray-700 mb-2"
+                                   style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                Estado de Verificación
                             </label>
                             <select
                                 name="status"
                                 id="status"
                                 defaultValue={filters.status}
-                                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-law-accent focus:outline-none focus:ring-law-accent"
+                                className="w-full rounded-lg border-2 border-gray-300 px-4 py-2 text-sm focus:border-green-500 focus:ring-2 focus:ring-green-500/20"
                             >
                                 <option value="">Todos</option>
                                 <option value="pending">Pendiente</option>
@@ -206,43 +245,52 @@ export default function AdminAbogados() {
                         <div className="flex items-end">
                             <button
                                 type="submit"
-                                className="rounded-md bg-law-accent px-3 py-2 text-sm font-semibold text-white hover:bg-law-accent/90 focus:outline-none focus:ring-2 focus:ring-law-accent focus:ring-offset-2"
+                                className="px-6 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg"
+                                style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
                             >
                                 Filtrar
                             </button>
                         </div>
                     </Form>
-                </div>
+                </motion.div>
 
                 {/* Lawyers List */}
                 <div className="space-y-6">
-                    {lawyers.map((lawyer) => (
-                        <div key={lawyer.id} className="bg-white shadow rounded-lg overflow-hidden">
+                    {lawyers.map((lawyer, index) => (
+                        <motion.div
+                            key={lawyer.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.4 + index * 0.05 }}
+                            className="bg-white shadow-xl rounded-2xl overflow-hidden border-2 border-green-100"
+                            style={{ borderRadius: "2px" }}
+                        >
                             <div className="p-6">
                                 <div className="flex items-start justify-between">
                                     <div className="flex-1">
                                         <div className="flex items-center space-x-4">
-                                            <div className="h-12 w-12 rounded-full bg-law-accent flex items-center justify-center">
-                                                <span className="text-lg font-medium text-white">
+                                            <div className="h-16 w-16 rounded-full bg-gradient-to-r from-green-400 to-emerald-400 flex items-center justify-center shadow-lg">
+                                                <span className="text-2xl font-bold text-white">
                                                     {lawyer.user.profile?.firstName?.charAt(0) || lawyer.user.email.charAt(0).toUpperCase()}
                                                 </span>
                                             </div>
                                             <div>
-                                                <h3 className="text-lg font-medium text-gray-900">
+                                                <h3 className="text-xl font-bold text-gray-900"
+                                                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
                                                     {lawyer.user.profile?.firstName && lawyer.user.profile?.lastName
                                                         ? `${lawyer.user.profile.firstName} ${lawyer.user.profile.lastName}`
                                                         : lawyer.user.email
                                                     }
                                                 </h3>
-                                                <p className="text-sm text-gray-500">{lawyer.user.email}</p>
-                                                <div className="flex items-center space-x-4 mt-1">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(lawyer.status)}`}>
-                                                        {lawyer.status === 'verified' ? 'Verificado' :
-                                                            lawyer.status === 'pending' ? 'Pendiente' :
-                                                                lawyer.status === 'suspended' ? 'Suspendido' : lawyer.status}
+                                                <p className="text-sm text-gray-600 mt-1">{lawyer.user.email}</p>
+                                                <div className="flex items-center space-x-4 mt-2">
+                                                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(lawyer.status)}`}>
+                                                        {lawyer.status === 'verified' ? '✓ Verificado' :
+                                                            lawyer.status === 'pending' ? '⏳ Pendiente' :
+                                                                lawyer.status === 'suspended' ? '⊗ Suspendido' : lawyer.status}
                                                     </span>
                                                     <span className="text-xs text-gray-500">
-                                                        Registrado: {new Date(lawyer.user.createdAt).toLocaleDateString('es-CO')}
+                                                        📅 {new Date(lawyer.user.createdAt).toLocaleDateString('es-CO')}
                                                     </span>
                                                 </div>
                                             </div>
@@ -250,32 +298,51 @@ export default function AdminAbogados() {
 
                                         {/* Professional Info */}
                                         {(lawyer.specialty || lawyer.university || lawyer.experienceYears) && (
-                                            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
+                                            <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-100">
                                                 {lawyer.specialty && (
                                                     <div>
-                                                        <span className="font-medium text-gray-700">Especialidad:</span>
-                                                        <p className="text-gray-600">{lawyer.specialty}</p>
+                                                        <span className="font-semibold text-gray-700 text-sm"
+                                                              style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                                            Especialidad:
+                                                        </span>
+                                                        <p className="text-gray-600 text-sm mt-1">{lawyer.specialty}</p>
                                                     </div>
                                                 )}
                                                 {lawyer.university && (
                                                     <div>
-                                                        <span className="font-medium text-gray-700">Universidad:</span>
-                                                        <p className="text-gray-600">{lawyer.university}</p>
+                                                        <span className="font-semibold text-gray-700 text-sm"
+                                                              style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                                            Universidad:
+                                                        </span>
+                                                        <p className="text-gray-600 text-sm mt-1">{lawyer.university}</p>
                                                     </div>
                                                 )}
                                                 {lawyer.experienceYears && (
                                                     <div>
-                                                        <span className="font-medium text-gray-700">Experiencia:</span>
-                                                        <p className="text-gray-600">{lawyer.experienceYears} años</p>
+                                                        <span className="font-semibold text-gray-700 text-sm"
+                                                              style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                                            Experiencia:
+                                                        </span>
+                                                        <p className="text-gray-600 text-sm mt-1">{lawyer.experienceYears} años</p>
                                                     </div>
                                                 )}
                                             </div>
                                         )}
 
                                         {/* Stats */}
-                                        <div className="mt-4 flex items-center space-x-6 text-sm text-gray-600">
-                                            <span>Consultas: {lawyer._count.chatSessions}</span>
-                                            <span>Reseñas: {lawyer._count.reviews}</span>
+                                        <div className="mt-4 flex items-center space-x-8 text-sm">
+                                            <div className="flex items-center space-x-2">
+                                                <span className="text-2xl">💼</span>
+                                                <span className="text-gray-600">
+                                                    <span className="font-bold text-gray-900">{lawyer._count.chatSessions}</span> consultas
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center space-x-2">
+                                                <span className="text-2xl">⭐</span>
+                                                <span className="text-gray-600">
+                                                    <span className="font-bold text-gray-900">{lawyer._count.reviews}</span> reseñas
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -286,9 +353,10 @@ export default function AdminAbogados() {
                                                 <input type="hidden" name="action" value="verify-lawyer" />
                                                 <button
                                                     type="submit"
-                                                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                                                    className="inline-flex items-center px-4 py-2 border-2 border-green-600 text-sm font-semibold rounded-lg text-green-600 bg-white hover:bg-green-600 hover:text-white transition-all"
+                                                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
                                                 >
-                                                    Verificar
+                                                    ✓ Verificar
                                                 </button>
                                             </Form>
                                         )}
@@ -298,9 +366,10 @@ export default function AdminAbogados() {
                                                 <input type="hidden" name="action" value="suspend-lawyer" />
                                                 <button
                                                     type="submit"
-                                                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+                                                    className="inline-flex items-center px-4 py-2 border-2 border-red-600 text-sm font-semibold rounded-lg text-red-600 bg-white hover:bg-red-600 hover:text-white transition-all"
+                                                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
                                                 >
-                                                    Suspender
+                                                    ⊗ Suspender
                                                 </button>
                                             </Form>
                                         )}
@@ -309,37 +378,42 @@ export default function AdminAbogados() {
 
                                 {/* Documents */}
                                 {lawyer.documents.length > 0 && (
-                                    <div className="mt-6 border-t border-gray-200 pt-4">
-                                        <h4 className="text-sm font-medium text-gray-900 mb-3">Documentos</h4>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                    <div className="mt-6 pt-6 border-t-2 border-green-100">
+                                        <h4 className="text-sm font-bold text-gray-900 mb-4"
+                                            style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                            📄 Documentos Profesionales
+                                        </h4>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                             {lawyer.documents.map((doc) => (
-                                                <div key={doc.id} className="border border-gray-200 rounded-md p-3">
-                                                    <div className="flex items-center justify-between">
+                                                <div key={doc.id} className="border-2 border-green-100 rounded-lg p-4 bg-gradient-to-br from-white to-green-50">
+                                                    <div className="flex items-center justify-between mb-3">
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-sm font-medium text-gray-900 truncate">
-                                                                {doc.docType?.replace('_', ' ').toUpperCase() || 'Documento'}
+                                                            <p className="text-sm font-bold text-gray-900 truncate"
+                                                               style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                                                {doc.docType?.replace('_', ' ').toUpperCase() || '📎 Documento'}
                                                             </p>
-                                                            <p className="text-xs text-gray-500">
+                                                            <p className="text-xs text-gray-500 mt-1">
                                                                 {new Date(doc.createdAt).toLocaleDateString('es-CO')}
                                                             </p>
                                                         </div>
                                                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getDocStatusColor(doc.status)}`}>
-                                                            {doc.status === 'approved' ? 'Aprobado' :
-                                                                doc.status === 'pending' ? 'Pendiente' :
-                                                                    doc.status === 'rejected' ? 'Rechazado' : doc.status}
+                                                            {doc.status === 'approved' ? '✓' :
+                                                                doc.status === 'pending' ? '⏳' :
+                                                                    doc.status === 'rejected' ? '✗' : doc.status}
                                                         </span>
                                                     </div>
-                                                    <div className="mt-2 flex items-center space-x-2">
+                                                    <div className="flex items-center space-x-2 mt-3">
                                                         <a
                                                             href={doc.fileUrl}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="text-xs text-law-accent hover:text-law-accent/80 font-medium"
+                                                            className="text-xs text-green-600 hover:text-green-800 font-medium"
                                                         >
-                                                            Ver
+                                                            👁️ Ver
                                                         </a>
                                                         {doc.status === 'pending' && (
                                                             <>
+                                                                <span className="text-gray-300">|</span>
                                                                 <Form method="post" className="inline">
                                                                     <input type="hidden" name="documentId" value={doc.id} />
                                                                     <input type="hidden" name="action" value="approve-document" />
@@ -347,9 +421,10 @@ export default function AdminAbogados() {
                                                                         type="submit"
                                                                         className="text-xs text-green-600 hover:text-green-800 font-medium"
                                                                     >
-                                                                        Aprobar
+                                                                        ✓ Aprobar
                                                                     </button>
                                                                 </Form>
+                                                                <span className="text-gray-300">|</span>
                                                                 <Form method="post" className="inline">
                                                                     <input type="hidden" name="documentId" value={doc.id} />
                                                                     <input type="hidden" name="action" value="reject-document" />
@@ -357,7 +432,7 @@ export default function AdminAbogados() {
                                                                         type="submit"
                                                                         className="text-xs text-red-600 hover:text-red-800 font-medium"
                                                                     >
-                                                                        Rechazar
+                                                                        ✗ Rechazar
                                                                     </button>
                                                                 </Form>
                                                             </>
@@ -369,41 +444,47 @@ export default function AdminAbogados() {
                                     </div>
                                 )}
                             </div>
-                        </div>
+                        </motion.div>
                     ))}
                 </div>
 
                 {/* Pagination */}
                 {totalPages > 1 && (
-                    <div className="mt-8 flex items-center justify-between">
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.6 }}
+                        className="mt-8 flex items-center justify-between bg-white shadow-lg rounded-xl p-4 border-2 border-green-100"
+                    >
                         <div>
-                            <p className="text-sm text-gray-700">
-                                Mostrando <span className="font-medium">{(currentPage - 1) * 20 + 1}</span> a{' '}
-                                <span className="font-medium">{Math.min(currentPage * 20, totalLawyers)}</span> de{' '}
-                                <span className="font-medium">{totalLawyers}</span> abogados
+                            <p className="text-sm text-gray-700"
+                               style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                Mostrando <span className="font-bold">{(currentPage - 1) * 20 + 1}</span> a{' '}
+                                <span className="font-bold">{Math.min(currentPage * 20, totalLawyers)}</span> de{' '}
+                                <span className="font-bold">{totalLawyers}</span> abogados
                             </p>
                         </div>
                         <div className="flex space-x-2">
                             {currentPage > 1 && (
                                 <Link
                                     to={`?page=${currentPage - 1}${filters.status ? `&status=${filters.status}` : ''}`}
-                                    className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                    className="px-4 py-2 border-2 border-green-600 text-sm font-semibold rounded-lg text-green-600 hover:bg-green-600 hover:text-white transition-all"
                                 >
-                                    Anterior
+                                    ← Anterior
                                 </Link>
                             )}
                             {currentPage < totalPages && (
                                 <Link
                                     to={`?page=${currentPage + 1}${filters.status ? `&status=${filters.status}` : ''}`}
-                                    className="inline-flex items-center px-3 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                    className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all shadow-lg"
                                 >
-                                    Siguiente
+                                    Siguiente →
                                 </Link>
                             )}
                         </div>
-                    </div>
+                    </motion.div>
                 )}
             </div>
-        </Layout>
+        </div>
     );
 }

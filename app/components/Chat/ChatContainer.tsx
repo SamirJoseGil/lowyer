@@ -1,274 +1,176 @@
 import { useState, useEffect, useRef } from "react";
-import { useFetcher } from "@remix-run/react";
+import { motion } from "framer-motion";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import ChatHeader from "./ChatHeader";
-import HoursCounter from "../HoursCounter";
+import TypingIndicator from "./TypingIndicator";
 
-type Message = {
-    id: string;
-    content: string;
-    senderRole: "user" | "abogado" | "admin" | "ia";
-    createdAt: string;
-    sender?: {
-        profile?: {
-            firstName?: string;
-            lastName?: string;
-        };
-        email: string;
-    };
-};
-
-type ChatSession = {
-    id: string;
-    status: string;
-    startedAt: string;
-    lawyer?: {
-        user: {
-            profile?: {
-                firstName?: string;
-                lastName?: string;
-            };
-            email: string;
-        };
-    };
-    licenseInstance: {
-        hoursRemaining: number;
-        license: {
-            name: string;
-        };
-    };
-};
-
-type ChatContainerProps = {
-    session: ChatSession;
-    initialMessages: Message[];
+interface ChatContainerProps {
+    session: any;
+    initialMessages: any[];
     userId: string;
-};
-
-type MessageFetcherResponse = {
-    success: boolean;
-    message?: Message;
-    aiResponse?: Message;
-    error?: string;
-};
-
-type CloseFetcherResponse = {
-    success: boolean;
-    error?: string;
-};
+}
 
 export default function ChatContainer({ session, initialMessages, userId }: ChatContainerProps) {
-    const [messages, setMessages] = useState<Message[]>(initialMessages);
-    const [isLoading, setIsLoading] = useState(false);
-    const messageFetcher = useFetcher();
-    const closeFetcher = useFetcher();
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-    const pollIntervalRef = useRef<NodeJS.Timeout>();
-    const lastMessageIdRef = useRef<string>(initialMessages[initialMessages.length - 1]?.id || '');
+    const [messages, setMessages] = useState(initialMessages || []);
+    const [isPolling, setIsPolling] = useState(true);
+    const [showTyping, setShowTyping] = useState(false);
+    const pollingRef = useRef<NodeJS.Timeout>();
 
-    console.log(`💬 ChatContainer initialized for session ${session.id} with ${initialMessages.length} initial messages`);
-
-    // Auto scroll to bottom when new messages arrive
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
-
+    // Polling para obtener nuevos mensajes
     useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
+        if (!isPolling) return;
 
-    // Polling for new messages (simple approach instead of WebSockets)
-    useEffect(() => {
         const pollMessages = async () => {
-            if (session.status !== "active") return;
-
             try {
-                const currentLastMessageId = messages[messages.length - 1]?.id || '';
-
-                if (currentLastMessageId === lastMessageIdRef.current) {
-                    // No new messages to fetch
-                    return;
-                }
-
-                console.log(`🔄 Polling for messages after ${lastMessageIdRef.current}`);
-
-                const response = await fetch(`/api/chat/messages?sessionId=${session.id}&after=${lastMessageIdRef.current}`);
+                const response = await fetch(`/api/chat/messages?sessionId=${session.id}&page=1&limit=50`);
                 if (response.ok) {
                     const newMessages = await response.json();
-
-                    if (newMessages.length > 0) {
-                        console.log(`📨 Received ${newMessages.length} new messages`);
-                        setMessages(prev => {
-                            // Avoid duplicates by checking message IDs
-                            const existingIds = new Set(prev.map(msg => msg.id));
-                            const uniqueNewMessages = newMessages.filter((msg: Message) => !existingIds.has(msg.id));
-
-                            if (uniqueNewMessages.length > 0) {
-                                lastMessageIdRef.current = uniqueNewMessages[uniqueNewMessages.length - 1].id;
-                                return [...prev, ...uniqueNewMessages];
-                            }
-
-                            return prev;
-                        });
-                    }
+                    setMessages(newMessages);
                 }
             } catch (error) {
-                console.error("💥 Error polling messages:", error);
+                console.error("Error polling messages:", error);
             }
         };
 
         // Poll every 2 seconds
-        pollIntervalRef.current = setInterval(pollMessages, 2000);
+        pollingRef.current = setInterval(pollMessages, 2000);
 
         return () => {
-            if (pollIntervalRef.current) {
-                clearInterval(pollIntervalRef.current);
+            if (pollingRef.current) {
+                clearInterval(pollingRef.current);
             }
         };
-    }, [session.id, session.status, messages.length]);
+    }, [session.id, isPolling]);
 
-    const handleSendMessage = async (content: string) => {
-        if (!content.trim() || isLoading) {
-            console.log(`⚠️ Cannot send message: empty content or loading`);
-            return;
-        }
-
-        console.log(`📤 Sending message: "${content.substring(0, 50)}..."`);
-        setIsLoading(true);
-
-        // Send message without optimistic update to avoid duplicates
-        messageFetcher.submit(
-            {
-                action: "send",
-                sessionId: session.id,
-                content,
-                senderRole: "user"
-            },
-            {
-                method: "post",
-                action: "/api/chat/send"
+    const handleMessageSent = (result: any) => {
+        if (result.success) {
+            // Mostrar indicador de "escribiendo" para respuesta de IA
+            if (result.aiResponse) {
+                setShowTyping(true);
+                setTimeout(() => {
+                    setShowTyping(false);
+                    // El polling se encargará de cargar los nuevos mensajes
+                }, 1000);
             }
-        );
+
+            console.log(`📨 Message sent, polling will update UI`);
+        }
     };
 
-    const handleCloseChat = () => {
-        if (confirm("¿Estás seguro de que quieres cerrar el chat? Se guardará un resumen de la conversación.")) {
-            console.log(`🔒 Closing chat session ${session.id}`);
-            closeFetcher.submit(
-                {
-                    action: "close",
-                    sessionId: session.id
+    const handleCloseSession = async () => {
+        try {
+            setIsPolling(false);
+
+            const response = await fetch("/api/chat/close", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
                 },
-                {
-                    method: "post",
-                    action: "/api/chat/close"
-                }
-            );
+                body: JSON.stringify({
+                    sessionId: session.id,
+                    summary: "Sesión cerrada por el usuario"
+                })
+            });
+
+            if (response.ok) {
+                console.log(`✅ Session closed successfully`);
+                window.location.reload(); // Reload to reset chat state
+            }
+        } catch (error) {
+            console.error("Error closing session:", error);
         }
     };
 
-    // Handle fetcher responses
-    useEffect(() => {
-        if (messageFetcher.data) {
-            setIsLoading(false);
-            const data = messageFetcher.data as MessageFetcherResponse;
-
-            if (data.success) {
-                console.log(`✅ Message sent successfully`);
-
-                // Add the user message and AI response if present
-                const newMessages = data.message ? [data.message] : [];
-                if (data.aiResponse) {
-                    newMessages.push(data.aiResponse);
-                    console.log(`🤖 AI response received`);
-                }
-
-                setMessages(prev => {
-                    // Avoid duplicates
-                    const existingIds = new Set(prev.map(msg => msg.id));
-                    const uniqueNewMessages = newMessages.filter(msg => !existingIds.has(msg.id));
-
-                    if (uniqueNewMessages.length > 0) {
-                        lastMessageIdRef.current = uniqueNewMessages[uniqueNewMessages.length - 1].id;
-                        return [...prev, ...uniqueNewMessages];
-                    }
-
-                    return prev;
-                });
-            } else {
-                alert(data.error || "Error al enviar el mensaje");
-            }
-        }
-    }, [messageFetcher.data]);
-
-    // Handle session close
-    useEffect(() => {
-        if ((closeFetcher.data as CloseFetcherResponse)?.success) {
-            console.log(`✅ Chat session closed successfully`);
-            // Optionally redirect or update UI
-        }
-    }, [closeFetcher.data]);
-
-    const sessionStartTime = new Date(session.startedAt);
-    const isActive = session.status === "active";
-
-    console.log(`🖥️ Rendering ChatContainer with ${messages.length} messages, active: ${isActive}`);
+    const isSessionActive = session.status === "active";
+    const chatType = session.metadata?.chatType || "lawyer";
 
     return (
-        <div className="flex flex-col h-full bg-white rounded-lg shadow-lg overflow-hidden">
-            {/* Header */}
+        <motion.div
+            className="flex flex-col h-full bg-white"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+        >
+            {/* Chat Header */}
             <ChatHeader
                 session={session}
-                onCloseChat={handleCloseChat}
-                isClosing={closeFetcher.state === "submitting"}
+                onCloseSession={handleCloseSession}
+                isClosing={false}
             />
 
-            {/* Hours Counter */}
-            <div className="p-4 bg-gray-50 border-b">
-                <HoursCounter
-                    sessionStartTime={sessionStartTime}
-                    hoursRemaining={Number(session.licenseInstance.hoursRemaining)}
-                    onWarning={() => {
-                        console.log(`⚠️ Hour warning triggered for session ${session.id}`);
-                        alert("Te quedan menos de 10 minutos en tu licencia. Considera renovar para continuar.");
-                    }}
-                    onExhausted={() => {
-                        console.log(`🚫 Hours exhausted for session ${session.id}`);
-                        alert("Tu tiempo ha expirado. La sesión se cerrará automáticamente.");
-                        handleCloseChat();
-                    }}
-                />
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-hidden">
+            {/* Messages Area - Sin padding propio, MessageList lo maneja */}
+            <div className="flex-1 flex flex-col overflow-hidden">
                 <MessageList
                     messages={messages}
                     currentUserId={userId}
                 />
-                <div ref={messagesEndRef} />
+
+                {/* Typing Indicator */}
+                {showTyping && (
+                    <div className="px-6 pb-4">
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            className="flex items-start gap-3"
+                        >
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center">
+                                <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082a.75.75 0 00-.678.744v.812M9.75 3.104a48.424 48.424 0 011.5 0M5 14.5c0 2.208 1.792 4 4 4s4-1.792 4-4M5 14.5c0-1.01.377-1.932 1-2.626M19 14.5v-5.714a2.25 2.25 0 00-.659-1.591L14.25 3.104M19 14.5c0 2.208-1.792 4-4 4s-4-1.792-4-4m8 0c1.01-.377 1.932-1 2.626-1" />
+                                </svg>
+                            </div>
+                            <div className="bg-gradient-to-r from-gray-100 to-gray-200 rounded-2xl px-4 py-3 max-w-xs border border-gray-200">
+                                <div className="flex items-center space-x-1">
+                                    <motion.div
+                                        className="w-2 h-2 bg-gray-500 rounded-full"
+                                        animate={{
+                                            scale: [1, 1.5, 1],
+                                            opacity: [0.5, 1, 0.5]
+                                        }}
+                                        transition={{
+                                            duration: 1.2,
+                                            repeat: Infinity,
+                                            delay: 0
+                                        }}
+                                    />
+                                    <motion.div
+                                        className="w-2 h-2 bg-gray-500 rounded-full"
+                                        animate={{
+                                            scale: [1, 1.5, 1],
+                                            opacity: [0.5, 1, 0.5]
+                                        }}
+                                        transition={{
+                                            duration: 1.2,
+                                            repeat: Infinity,
+                                            delay: 0.2
+                                        }}
+                                    />
+                                    <motion.div
+                                        className="w-2 h-2 bg-gray-500 rounded-full"
+                                        animate={{
+                                            scale: [1, 1.5, 1],
+                                            opacity: [0.5, 1, 0.5]
+                                        }}
+                                        transition={{
+                                            duration: 1.2,
+                                            repeat: Infinity,
+                                            delay: 0.4
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
             </div>
 
-            {/* Input */}
-            {isActive ? (
-                <MessageInput
-                    onSendMessage={handleSendMessage}
-                    disabled={isLoading || messageFetcher.state === "submitting"}
-                    placeholder="Escribe tu consulta legal..."
-                />
-            ) : (
-                <div className="p-4 bg-gray-100 text-center text-gray-600">
-                    Esta sesión de chat ha finalizado
-                </div>
-            )}
-
-            {/* Loading indicator */}
-            {(isLoading || messageFetcher.state === "submitting") && (
-                <div className="p-2 bg-blue-50 text-center text-blue-600 text-sm">
-                    Enviando mensaje...
-                </div>
-            )}
-        </div>
+            {/* Message Input */}
+            <MessageInput
+                sessionId={session.id}
+                onMessageSent={handleMessageSent}
+                disabled={!isSessionActive}
+            />
+        </motion.div>
     );
 }

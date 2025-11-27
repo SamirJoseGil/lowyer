@@ -10,34 +10,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   try {
     const user = await requireUser(request);
-    const formData = await request.formData();
-    
-    const sessionId = formData.get("sessionId")?.toString();
-    const summary = formData.get("summary")?.toString();
+    const { sessionId, summary } = await request.json();
 
     if (!sessionId) {
-      return json({ 
-        success: false, 
-        error: "Session ID requerido" 
-      }, { status: 400 });
+      return json({ error: "Session ID is required" }, { status: 400 });
     }
 
     const result = await closeChatSession(sessionId, user.id, summary);
-
-    if (result.success) {
-      return json({ 
-        success: true, 
-        message: "Sesión cerrada correctamente" 
-      });
-    } else {
-      return json(result, { status: 400 });
-    }
+    
+    return json(result);
 
   } catch (error) {
     console.error("Error in chat close API:", error);
-    return json({ 
-      success: false, 
-      error: "Error interno del servidor" 
-    }, { status: 500 });
+    return json({ error: "Error interno del servidor" }, { status: 500 });
   }
 };

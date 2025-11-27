@@ -1,4 +1,6 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import { identifyLegalArea, getLegalContext } from "./legal-knowledge.server";
+import { getCachedResponse, cacheResponse, logConsultation } from "./ai-cache.server";
 
 // Validar y configurar la API key de forma más robusta
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim();
@@ -64,14 +66,73 @@ LIMITACIONES:
 Responde de manera profesional, empática y educativa.
 `;
 
-export async function getGeminiResponse(userMessage: string, conversationHistory: string[] = []): Promise<{ success: boolean; response?: string; error?: string }> {
+export async function getGeminiResponse(
+  userMessage: string, 
+  conversationHistory: string[] = [],
+  options: {
+    userId?: string;
+    sessionId?: string;
+    useCache?: boolean;
+  } = {}
+): Promise<{ success: boolean; response?: string; error?: string; fromCache?: boolean; legalArea?: string }> {
+  
   console.log(`🤖 Gemini API called with message: "${userMessage.substring(0, 100)}..."`);
   console.log(`📚 Conversation history length: ${conversationHistory.length}`);
-  console.log(`🔑 Using API key length: ${GEMINI_API_KEY.length} characters`);
-  console.log(`🔑 API key starts with: ${GEMINI_API_KEY.substring(0, 8)}`);
-  console.log(`🔑 API key ends with: ${GEMINI_API_KEY.slice(-4)}`);
+  console.log(`⚙️ Options:`, options);
+  
+  const startTime = Date.now();
   
   try {
+    // Verificar cache primero si está habilitado
+    if (options.useCache !== false) {
+      const cachedResult = await getCachedResponse(userMessage);
+      if (cachedResult) {
+        console.log(`⚡ Returning cached response`);
+        
+        // Log la consulta aún si viene del cache
+        if (options.userId) {
+          await logConsultation(options.userId, userMessage, cachedResult.response, {
+            legalAreaName: cachedResult.legalArea ?? undefined,
+            sessionId: options.sessionId,
+            responseTime: Date.now() - startTime,
+            aiModel: 'gemini-cached'
+          });
+        }
+        
+        return {
+          success: true,
+          response: cachedResult.response,
+          fromCache: true,
+          legalArea: cachedResult.legalArea
+        };
+      }
+    }
+    
+    // Identificar área legal de la consulta
+    const identifiedArea = await identifyLegalArea(userMessage);
+    let legalContext = "";
+    
+    if (identifiedArea) {
+      console.log(`📋 Identified legal area: ${identifiedArea}`);
+      legalContext = await getLegalContext(identifiedArea);
+    }
+    
+    // Construir prompt mejorado con contexto legal específico
+    let enhancedPrompt = LEGAL_SYSTEM_PROMPT;
+    
+    if (legalContext) {
+      enhancedPrompt += `\n\nCONTEXTO LEGAL ESPECÍFICO:\n${legalContext}\n`;
+    }
+    
+    if (conversationHistory.length > 0) {
+      enhancedPrompt += `\nCONTEXTO DE LA CONVERSACIÓN:\n${conversationHistory.join('\n')}\n\n`;
+      console.log(`📖 Using conversation context with ${conversationHistory.length} messages`);
+    }
+    
+    enhancedPrompt += `CONSULTA DEL USUARIO: ${userMessage}`;
+    
+    console.log(`🎯 Sending enhanced request to ${DEFAULT_MODEL} with prompt length: ${enhancedPrompt.length} characters`);
+
     // Verificar que la API key esté configurada correctamente
     if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '') {
       console.log(`❌ GEMINI_API_KEY is empty or undefined`);
@@ -114,20 +175,8 @@ export async function getGeminiResponse(userMessage: string, conversationHistory
       ],
     });
 
-    // Construir el contexto con historial de conversación
-    let contextualPrompt = LEGAL_SYSTEM_PROMPT;
-    
-    if (conversationHistory.length > 0) {
-      contextualPrompt += `\n\nCONTEXTO DE LA CONVERSACIÓN:\n${conversationHistory.join('\n')}\n\n`;
-      console.log(`📖 Using conversation context with ${conversationHistory.length} messages`);
-    }
-    
-    contextualPrompt += `CONSULTA DEL USUARIO: ${userMessage}`;
-    
-    console.log(`🎯 Sending request to ${DEFAULT_MODEL} with prompt length: ${contextualPrompt.length} characters`);
-
     // Generar respuesta con manejo de errores mejorado
-    const result = await model.generateContent(contextualPrompt);
+    const result = await model.generateContent(enhancedPrompt);
     
     if (!result) {
       console.log(`❌ No result returned from Gemini`);
@@ -154,10 +203,31 @@ export async function getGeminiResponse(userMessage: string, conversationHistory
       };
     }
 
-    console.log(`✅ Gemini response generated successfully`);
+    const finalResponse = formatLegalResponse(text.trim());
+    const responseTime = Date.now() - startTime;
+    
+    console.log(`✅ Gemini response generated successfully in ${responseTime}ms`);
+    
+    // Cachear la respuesta para consultas futuras
+    if (options.useCache !== false) {
+      await cacheResponse(userMessage, finalResponse, identifiedArea || undefined);
+    }
+    
+    // Log la consulta
+    if (options.userId) {
+      await logConsultation(options.userId, userMessage, finalResponse, {
+        legalAreaName: identifiedArea ?? undefined,
+        sessionId: options.sessionId,
+        responseTime,
+        aiModel: DEFAULT_MODEL
+      });
+    }
+    
     return {
       success: true,
-      response: text.trim()
+      response: finalResponse,
+      fromCache: false,
+      legalArea: identifiedArea ?? undefined
     };
 
   } catch (error) {

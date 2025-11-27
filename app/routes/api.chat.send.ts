@@ -9,14 +9,35 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   console.log(`📡 Chat send API called`);
+  console.log(`📋 Request Content-Type: ${request.headers.get("content-type")}`);
 
   try {
     const user = await requireUser(request);
-    const formData = await request.formData();
     
-    const sessionId = formData.get("sessionId")?.toString();
-    const content = formData.get("content")?.toString();
-    const senderRole = formData.get("senderRole")?.toString();
+    // Intentar parsear como JSON primero
+    let requestData;
+    const contentType = request.headers.get("content-type");
+    
+    if (contentType?.includes("application/json")) {
+      console.log(`📝 Parsing request as JSON`);
+      requestData = await request.json();
+    } else if (contentType?.includes("multipart/form-data") || contentType?.includes("application/x-www-form-urlencoded")) {
+      console.log(`📝 Parsing request as FormData`);
+      const formData = await request.formData();
+      requestData = {
+        sessionId: formData.get("sessionId")?.toString(),
+        content: formData.get("content")?.toString(),
+        senderRole: formData.get("senderRole")?.toString()
+      };
+    } else {
+      console.log(`❌ Unsupported Content-Type: ${contentType}`);
+      return json({ 
+        success: false, 
+        error: "Content-Type no soportado" 
+      }, { status: 400 });
+    }
+    
+    const { sessionId, content, senderRole } = requestData;
 
     console.log(`📋 API Request - User: ${user.id}, Session: ${sessionId}, Role: ${senderRole}`);
 

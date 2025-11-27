@@ -73,6 +73,7 @@ model User {
   userMetrics  UserMetric[]
   reviewedLawyerDocuments LawyerDocument[] @relation("ReviewedBy")
   reviewedMessageModerations MessageModeration[] @relation("ReviewedBy")
+  legalConsultations LegalConsultation[]
 
   @@index([email])
   @@map("users")
@@ -370,4 +371,67 @@ model SalesMetric {
 
   @@unique([month, year])
   @@map("sales_metrics")
+}
+
+// ---------- LEGAL KNOWLEDGE BASE ----------
+model LegalArea {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique
+  description String
+  mainLaw     String   @map("main_law")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  complementaryLaws LegalComplementaryLaw[]
+  aiResponses      AiResponseCache[]
+  consultations    LegalConsultation[]
+
+  @@map("legal_areas")
+}
+
+model LegalComplementaryLaw {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  legalAreaId String   @map("legal_area_id") @db.Uuid
+  lawName     String   @map("law_name")
+  lawNumber   String?  @map("law_number")
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  legalArea LegalArea @relation(fields: [legalAreaId], references: [id], onDelete: Cascade)
+
+  @@map("legal_complementary_laws")
+}
+
+model AiResponseCache {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  queryHash    String    @unique @map("query_hash") // Hash de la consulta
+  query        String    // Consulta original
+  response     String    // Respuesta de la IA
+  legalAreaId  String?   @map("legal_area_id") @db.Uuid
+  hitCount     Int       @default(1) @map("hit_count")
+  lastUsed     DateTime  @default(now()) @map("last_used") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt    DateTime? @map("expires_at") @db.Timestamptz(6)
+
+  legalArea LegalArea? @relation(fields: [legalAreaId], references: [id])
+
+  @@map("ai_response_cache")
+}
+
+model LegalConsultation {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  query        String
+  response     String
+  legalAreaId  String?  @map("legal_area_id") @db.Uuid
+  sessionId    String?  @map("session_id") @db.Uuid
+  aiModel      String   @default("gemini") @map("ai_model")
+  responseTime Int?     @map("response_time") // en millisegundos
+  satisfied    Boolean? // feedback del usuario
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user      User       @relation(fields: [userId], references: [id])
+  legalArea LegalArea? @relation(fields: [legalAreaId], references: [id])
+
+  @@map("legal_consultations")
 }

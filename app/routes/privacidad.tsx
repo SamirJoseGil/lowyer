@@ -1,5 +1,4 @@
 import type { MetaFunction } from "@remix-run/node";
-import Layout from "~/components/Layout";
 import { motion } from "framer-motion";
 
 export const meta: MetaFunction = () => {
@@ -11,7 +10,7 @@ export const meta: MetaFunction = () => {
 
 export default function PrivacidadPage() {
     return (
-        <Layout>
+        <div className="flex min-h-screen flex-col">
             <div className="bg-white px-6 py-32 lg:px-8">
                 <div className="mx-auto max-w-3xl text-base leading-7 text-gray-700">
                     <motion.div
@@ -107,6 +106,6 @@ export default function PrivacidadPage() {
                     </div>
                 </div>
             </div>
-        </Layout>
+        </div>
     );
 }

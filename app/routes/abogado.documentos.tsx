@@ -5,7 +5,6 @@ import { requireUser } from "~/lib/auth.server";
 import { isLawyer } from "~/lib/permissions.server";
 import { db } from "~/lib/db.server";
 import { uploadLawyerDocument, validateFile } from "~/lib/storage.server";
-import Layout from "~/components/Layout";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const user = await requireUser(request);
@@ -125,7 +124,7 @@ export default function AbogadoDocumentos() {
     };
 
     return (
-        <Layout user={user}>
+        <div className="flex min-h-screen flex-col">
             <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-gray-900">Documentos Profesionales</h1>
@@ -319,6 +318,6 @@ export default function AbogadoDocumentos() {
                     </div>
                 </div>
             </div>
-        </Layout>
+        </div>
     );
 }

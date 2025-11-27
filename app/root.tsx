@@ -5,11 +5,16 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLoaderData,
 } from "@remix-run/react";
-import type { LinksFunction, MetaFunction } from "@remix-run/node";
+import type { LinksFunction, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
+import { json } from "@remix-run/node";
 
 import "./tailwind.css";
 import { getEnv } from "./env.server";
+import { getUser } from "~/lib/auth.server";
+import { getUserActiveLicense } from "~/lib/licenses.server";
+import Layout from "~/components/Layout";
 
 export const meta: MetaFunction = () => {
   return [
@@ -39,7 +44,47 @@ export const links: LinksFunction = () => [
   { rel: "icon", href: "/favicon.ico" },
 ];
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const user = await getUser(request);
+  let activeLicense = null;
+
+  if (user) {
+    const license = await getUserActiveLicense(user.id);
+    if (license) {
+      activeLicense = {
+        ...license,
+        hoursRemaining: Number(license.hoursRemaining),
+        license: {
+          ...license.license,
+          hoursTotal: Number(license.license.hoursTotal),
+          priceCents: Number(license.license.priceCents)
+        }
+      };
+    }
+  }
+
+  // Asegurar que el rol se incluye en la respuesta
+  return json({
+    user: user ? {
+      ...user,
+      role: user.role // Asegurar que el rol está incluido
+    } : null,
+    activeLicense
+  });
+};
+
+// 📌 App principal
+export default function App() {
+  const { user, activeLicense } = useLoaderData<typeof loader>();
+
+  // Convert expiresAt back to Date if present
+  const hydratedActiveLicense = activeLicense
+    ? {
+      ...activeLicense,
+      expiresAt: activeLicense.expiresAt ? new Date(activeLicense.expiresAt) : null,
+    }
+    : null;
+
   return (
     <html lang="es" className="h-full scroll-smooth">
       <head>
@@ -48,15 +93,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Links />
       </head>
       <body className="h-full bg-white">
-        {children}
+        <Layout user={user} activeLicense={hydratedActiveLicense}>
+          <Outlet />
+        </Layout>
         <ScrollRestoration />
         <Scripts />
       </body>
     </html>
   );
-}
-
-// 📌 App principal
-export default function App() {
-  return <Outlet />;
 }

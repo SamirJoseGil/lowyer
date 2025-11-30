@@ -51,7 +51,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
             take: 20
         }),
         db.userMetric.findUnique({
-            where: { id: userId }
+            where: { userId }
         })
     ]);
 
@@ -59,12 +59,31 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
         throw new Response("User not found", { status: 404 });
     }
 
+    // Calcular permisos en el servidor
+    const isCurrentUserSuperAdmin = isSuperAdmin(user);
+    const isTargetUserSuperAdmin = targetUser.role.name === 'superadmin';
+    const canModifyUser = isCurrentUserSuperAdmin || !isTargetUserSuperAdmin;
+
+    // Filtrar roles disponibles en el servidor
+    const availableRoles = roles.filter(role => {
+        if (role.name === 'superadmin') {
+            return isCurrentUserSuperAdmin;
+        }
+        return true;
+    });
+
     return json({
         user,
         targetUser,
-        roles,
+        roles: availableRoles,
         auditLogs,
-        userMetrics
+        userMetrics,
+        // Pasar permisos calculados al cliente
+        permissions: {
+            isCurrentUserSuperAdmin,
+            isTargetUserSuperAdmin,
+            canModifyUser
+        }
     });
 };
 
@@ -168,21 +187,7 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function AdminUserDetail() {
-    const { user, targetUser, roles, auditLogs, userMetrics } = useLoaderData<typeof loader>();
-
-    const isCurrentUserSuperAdmin = isSuperAdmin(user);
-    const isTargetUserSuperAdmin = targetUser.role.name === 'superadmin';
-
-    // Check if current user can modify this target user
-    const canModifyUser = isCurrentUserSuperAdmin || !isTargetUserSuperAdmin;
-
-    // Filter roles that current user can assign
-    const availableRoles = roles.filter(role => {
-        if (role.name === 'superadmin') {
-            return isCurrentUserSuperAdmin; // Only superadmins can assign superadmin role
-        }
-        return true;
-    });
+    const { user, targetUser, roles, auditLogs, userMetrics, permissions } = useLoaderData<typeof loader>();
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -363,7 +368,7 @@ export default function AdminUserDetail() {
                         <div className="bg-white shadow rounded-lg">
                             <div className="px-6 py-4 border-b border-gray-200">
                                 <h3 className="text-lg font-medium text-gray-900">Acciones</h3>
-                                {isTargetUserSuperAdmin && !isCurrentUserSuperAdmin && (
+                                {permissions.isTargetUserSuperAdmin && !permissions.isCurrentUserSuperAdmin && (
                                     <p className="text-sm text-red-600 mt-1">
                                         Solo SuperAdmins pueden modificar otros SuperAdmins
                                     </p>
@@ -381,10 +386,10 @@ export default function AdminUserDetail() {
                                             name="roleId"
                                             id="roleId"
                                             defaultValue={targetUser.roleId}
-                                            disabled={!canModifyUser}
+                                            disabled={!permissions.canModifyUser}
                                             className="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-law-accent focus:outline-none focus:ring-law-accent disabled:bg-gray-100 disabled:cursor-not-allowed"
                                         >
-                                            {availableRoles.map((role) => (
+                                            {roles.map((role) => (
                                                 <option key={role.id} value={role.id}>
                                                     {role.name}
                                                 </option>
@@ -392,7 +397,7 @@ export default function AdminUserDetail() {
                                         </select>
                                         <button
                                             type="submit"
-                                            disabled={!canModifyUser}
+                                            disabled={!permissions.canModifyUser}
                                             className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-law-accent hover:bg-law-accent/90 disabled:bg-gray-400 disabled:cursor-not-allowed"
                                         >
                                             Cambiar
@@ -405,7 +410,7 @@ export default function AdminUserDetail() {
                                     <input type="hidden" name="action" value="toggle-status" />
                                     <button
                                         type="submit"
-                                        disabled={!canModifyUser}
+                                        disabled={!permissions.canModifyUser}
                                         className={`w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white disabled:bg-gray-400 disabled:cursor-not-allowed ${targetUser.status === "active"
                                                 ? "bg-red-600 hover:bg-red-700"
                                                 : "bg-green-600 hover:bg-green-700"
@@ -427,7 +432,7 @@ export default function AdminUserDetail() {
                                     <dl className="space-y-4">
                                         <div>
                                             <dt className="text-sm font-medium text-gray-500">Horas Usadas</dt>
-                                            <dd className="mt-1 text-sm text-gray-900">{userMetrics.hoursUsedTotal.toString()}</dd>
+                                            <dd className="mt-1 text-sm text-gray-900">{Number(userMetrics.hoursUsedTotal)}</dd>
                                         </div>
                                         <div>
                                             <dt className="text-sm font-medium text-gray-500">Sesiones Totales</dt>

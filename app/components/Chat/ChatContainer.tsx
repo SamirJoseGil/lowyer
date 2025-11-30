@@ -86,21 +86,16 @@ export default function ChatContainer({ session, initialMessages, userId }: Chat
     const chatType = session.metadata?.chatType || "lawyer";
 
     return (
-        <motion.div
-            className="flex flex-col h-full bg-white"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
-        >
+        <div className="flex-1 flex flex-col h-full bg-white">
             {/* Chat Header */}
             <ChatHeader
+                chatType={chatType}
                 session={session}
-                onCloseSession={handleCloseSession}
-                isClosing={false}
+                onEndSession={handleCloseSession}
             />
 
-            {/* Messages Area - Sin padding propio, MessageList lo maneja */}
-            <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Messages Container - ocupa todo el espacio disponible */}
+            <div className="flex-1 overflow-hidden">
                 <MessageList
                     messages={messages}
                     currentUserId={userId}
@@ -165,12 +160,14 @@ export default function ChatContainer({ session, initialMessages, userId }: Chat
                 )}
             </div>
 
-            {/* Message Input */}
-            <MessageInput
-                sessionId={session.id}
-                onMessageSent={handleMessageSent}
-                disabled={!isSessionActive}
-            />
-        </motion.div>
+            {/* Input Container - fijo en la parte inferior */}
+            <div className="flex-shrink-0 border-t-2 border-blue-100 bg-white">
+                <MessageInput
+                    sessionId={session.id}
+                    onMessageSent={handleMessageSent}
+                    disabled={!isSessionActive}
+                />
+            </div>
+        </div>
     );
 }

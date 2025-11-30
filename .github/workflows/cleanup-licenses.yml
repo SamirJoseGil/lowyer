@@ -1,0 +1,18 @@
+# GitHub Actions - Gratis para repos públicos
+name: Cleanup Expired Licenses
+
+on:
+  schedule:
+    # Ejecutar cada hora
+    - cron: '0 * * * *'
+  workflow_dispatch: # Permitir ejecución manual
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call cleanup endpoint
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            https://tu-dominio.com/api/cron/cleanup-licenses

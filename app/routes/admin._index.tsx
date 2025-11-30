@@ -90,15 +90,9 @@ export default function AdminDashboard() {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-white via-blue-50/30 to-purple-50/20">
-            {/* Decorative Background */}
-            <div className="fixed inset-0 opacity-30 pointer-events-none">
-                <div className="absolute top-20 right-20 w-96 h-96 bg-gradient-to-br from-blue-200/40 to-cyan-200/20 rounded-full blur-3xl" />
-                <div className="absolute bottom-40 left-20 w-80 h-80 bg-gradient-to-r from-purple-200/30 to-blue-200/20 rounded-full blur-3xl" />
-            </div>
-
-            <div className="relative mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-                {/* Header con estilo editorial */}
+        <div className="min-h-full bg-gradient-to-br from-white via-blue-50/30 to-purple-50/20">
+            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+                {/* Header simplificado */}
                 <div className="mb-12">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
@@ -107,69 +101,64 @@ export default function AdminDashboard() {
                     >
                         <div className="h-1 bg-gradient-to-r from-blue-400 via-purple-400 to-cyan-400 mb-6 rounded-full" />
                         
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <h1 className="text-4xl font-bold text-gray-900 mb-2"
-                                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                                    Panel de {isSuperAdmin ? 'Super' : ''}Administración
-                                </h1>
-                                <p className="text-lg text-gray-600 italic"
-                                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                                    {isSuperAdmin
-                                        ? "Control total del sistema y todas las métricas globales"
-                                        : "Gestiona usuarios, abogados y supervisa la plataforma"
-                                    }
-                                </p>
-                            </div>
-                            {isSuperAdmin && (
-                                <motion.div
-                                    initial={{ scale: 0 }}
-                                    animate={{ scale: 1 }}
-                                    transition={{ delay: 0.3, type: "spring" }}
-                                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-purple-100 to-pink-100 rounded-full border-2 border-purple-200"
-                                >
-                                    <svg className="w-5 h-5 text-purple-600" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" />
-                                    </svg>
-                                    <span className="font-semibold text-purple-800"
-                                            style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                                        SuperAdmin
-                                    </span>
-                                </motion.div>
-                            )}
+                        <div>
+                            <h1 className="text-4xl font-bold text-gray-900 mb-2"
+                                style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                Dashboard Principal
+                            </h1>
+                            <p className="text-lg text-gray-600 italic"
+                               style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                                Vista general del sistema y métricas clave
+                            </p>
                         </div>
 
                         <div className="h-0.5 bg-gradient-to-r from-blue-400 via-transparent to-purple-400 mt-6" />
                     </motion.div>
                 </div>
 
-                {/* Enhanced Stats Grid con animaciones */}
+                {/* Stats Grid con SVG icons */}
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-12">
                     {[{
                         label: "Total Usuarios",
                         value: stats.totalUsers,
-                        icon: "👥",
+                        icon: (
+                            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                            </svg>
+                        ),
                         color: "from-blue-500 to-cyan-500",
                         detail: `+${stats.todayRegistrations} hoy`
                     },
                     {
                         label: "Total Abogados",
                         value: stats.totalLawyers,
-                        icon: "⚖️",
+                        icon: (
+                            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z" />
+                            </svg>
+                        ),
                         color: "from-green-500 to-emerald-500",
                         detail: `${stats.pendingLawyers} pendientes`
                     },
                     {
                         label: "Chats Activos",
                         value: stats.activeChats,
-                        icon: "💬",
+                        icon: (
+                            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 01-.825-.242m9.345-8.334a2.126 2.126 0 00-.476-.095 48.64 48.64 0 00-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0011.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" />
+                            </svg>
+                        ),
                         color: "from-purple-500 to-pink-500",
                         detail: "En tiempo real"
                     },
                     {
                         label: "Ingresos del Mes",
                         value: formatCurrency(stats.monthlyRevenue),
-                        icon: "💰",
+                        icon: (
+                            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        ),
                         color: "from-yellow-500 to-orange-500",
                         detail: "COP"
                     }
@@ -181,17 +170,13 @@ export default function AdminDashboard() {
                         transition={{ delay: index * 0.1, duration: 0.5 }}
                         whileHover={{ scale: 1.03, y: -5 }}
                         className="relative overflow-hidden bg-white rounded-2xl shadow-lg border-2 border-blue-100"
-                        style={{ borderRadius: "2px" }}
                     >
                         <div className={`absolute inset-0 bg-gradient-to-br ${stat.color} opacity-5`} />
                         
                         <div className="relative p-6">
                             <div className="flex items-center justify-between mb-4">
-                                <span className="text-3xl">{stat.icon}</span>
-                                <div className={`p-2 bg-gradient-to-br ${stat.color} rounded-lg`}>
-                                    <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
-                                    </svg>
+                                <div className={`p-3 bg-gradient-to-br ${stat.color} rounded-xl shadow-lg`}>
+                                    {stat.icon}
                                 </div>
                             </div>
 
@@ -201,7 +186,7 @@ export default function AdminDashboard() {
                             </h3>
                             
                             <p className="text-3xl font-bold text-gray-900 mb-1"
-                                style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                               style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
                                 {stat.value}
                             </p>
                             

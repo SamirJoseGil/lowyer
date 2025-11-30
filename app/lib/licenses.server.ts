@@ -88,31 +88,113 @@ export async function initializeLicenses() {
 }
 
 export async function getUserActiveLicense(userId: string) {
-  console.log(`🔍 Getting active license for user ${userId}`);
-  
-  const license = await db.userLicense.findFirst({
-    where: {
-      userId,
-      status: "active",
-      OR: [
-        { expiresAt: null },
-        { expiresAt: { gt: new Date() } }
-      ],
-      hoursRemaining: { gt: 0 }
-    },
-    include: {
-      license: true
-    },
-    orderBy: { createdAt: 'desc' }
-  });
-  
-  if (license) {
-    console.log(`✅ Found active license for user ${userId}: ${license.license.name} (${license.hoursRemaining}h remaining)`);
-  } else {
-    console.log(`❌ No active license found for user ${userId}`);
-  }
-  
-  return license;
+    console.log(`🔍 [LICENSE] Checking active license for user: ${userId}`);
+    
+    const now = new Date();
+    console.log(`⏰ [LICENSE] Current time: ${now.toISOString()}`);
+    
+    // Primero, marcar las licencias expiradas de este usuario
+    const expiredCount = await db.userLicense.updateMany({
+        where: {
+            userId,
+            status: "active",
+            OR: [
+                {
+                    expiresAt: {
+                        lte: now
+                    }
+                },
+                {
+                    hoursRemaining: {
+                        lte: 0
+                    }
+                }
+            ]
+        },
+        data: {
+            status: "expired"
+        }
+    });
+    
+    if (expiredCount.count > 0) {
+        console.log(`⚠️ [LICENSE] Marked ${expiredCount.count} expired licenses for user ${userId}`);
+    }
+    
+    // Ahora buscar licencia activa válida
+    const activeLicense = await db.userLicense.findFirst({
+        where: {
+            userId,
+            status: "active",
+            hoursRemaining: { gt: 0 },
+            OR: [
+                { expiresAt: null }, // Licencias infinitas
+                { expiresAt: { gte: now } }
+            ]
+        },
+        include: {
+            license: true
+        },
+        orderBy: {
+            createdAt: 'desc'
+        }
+    });
+    
+    if (activeLicense) {
+        console.log(`✅ [LICENSE] Found active license: ${activeLicense.id}`);
+        console.log(`   - Type: ${activeLicense.license.name}`);
+        console.log(`   - Hours remaining: ${activeLicense.hoursRemaining}`);
+        console.log(`   - Expires: ${activeLicense.expiresAt || 'Never'}`);
+        console.log(`   - Status: ${activeLicense.status}`);
+    } else {
+        console.log(`❌ [LICENSE] No active license found for user ${userId}`);
+        
+        // Mostrar todas las licencias del usuario para debugging
+        const allUserLicenses = await db.userLicense.findMany({
+            where: { userId },
+            include: { license: true }
+        });
+        
+        console.log(`📋 [LICENSE] All licenses for user ${userId}:`, 
+            allUserLicenses.map(l => ({
+                id: l.id,
+                type: l.license.name,
+                status: l.status,
+                hours: Number(l.hoursRemaining),
+                expires: l.expiresAt
+            }))
+        );
+    }
+    
+    return activeLicense;
+}
+
+/**
+ * Marca licencias expiradas de un usuario específico
+ */
+async function markExpiredLicensesForUser(userId: string): Promise<void> {
+    const now = new Date();
+    
+    await db.userLicense.updateMany({
+        where: {
+            userId,
+            status: "active",
+            OR: [
+                {
+                    expiresAt: {
+                        lte: now
+                    }
+                },
+                {
+                    hoursRemaining: {
+                        lte: 0
+                    }
+                }
+            ]
+        },
+        data: {
+            status: "expired"
+        }
+    });
 }
 
 export async function hasValidLicense(userId: string, accessType?: AppliesTo): Promise<boolean> {

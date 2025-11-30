@@ -29,13 +29,23 @@ type LayoutProps = {
 
 export default function Layout({ children, user, activeLicense }: LayoutProps) {
     const location = useLocation();
+    
+    // Rutas que no deben mostrar navbar ni footer
     const isChat = location.pathname === '/chat';
+    const isAdminRoute = location.pathname.startsWith('/admin');
+    
+    // Determinar si debe mostrar layout completo
+    const shouldShowLayout = !isChat && !isAdminRoute;
 
     return (
         <div className={`flex min-h-screen flex-col ${isChat ? 'h-screen overflow-hidden' : ''}`}>
-            <Navbar user={user} activeLicense={activeLicense} />
-            <main className={`flex-grow ${isChat ? 'pt-16 h-full' : 'pt-16'}`}>{children}</main>
-            {!isChat && <Footer />}
+            {shouldShowLayout && <Navbar user={user} activeLicense={activeLicense} />}
+            
+            <main className={`flex-grow ${shouldShowLayout ? 'pt-16' : ''} ${isChat ? 'h-full' : ''}`}>
+                {children}
+            </main>
+            
+            {shouldShowLayout && <Footer />}
         </div>
     );
 }

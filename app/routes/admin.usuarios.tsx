@@ -63,6 +63,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     const totalPages = Math.ceil(totalUsers / limit);
 
+    // ✅ No necesita serialización adicional ya que _count solo tiene enteros
     return json({
         user,
         users,
@@ -324,7 +325,7 @@ export default function AdminUsuarios() {
                                                     </button>
                                                 </Form>
                                                 <Link
-                                                    to={`/admin/usuarios/${userData.id}`}
+                                                    to={`/admin/usuario/${userData.id}`}
                                                     className="inline-flex items-center px-2.5 py-1.5 rounded text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200"
                                                 >
                                                     Ver

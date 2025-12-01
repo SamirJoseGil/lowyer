@@ -16,6 +16,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const url = new URL(request.url);
     const status = url.searchParams.get("status") || "";
     const page = parseInt(url.searchParams.get("page") || "1");
+    const search = url.searchParams.get("search") || "";
+    const paymentMethod = url.searchParams.get("paymentMethod") || "";
 
     const limit = 20;
     const offset = (page - 1) * limit;
@@ -25,7 +27,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         where.status = status;
     }
 
-    const [purchases, totalPurchases, stats] = await Promise.all([
+    const [purchases, totalPurchases, totalRevenue, totalCompleted] = await Promise.all([
         db.purchase.findMany({
             where,
             include: {
@@ -34,8 +36,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
                         profile: true
                     }
                 },
-                license: true,
-                invoices: true
+                license: true
             },
             orderBy: { createdAt: 'desc' },
             take: limit,
@@ -44,24 +45,38 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         db.purchase.count({ where }),
         db.purchase.aggregate({
             _sum: { amountCents: true },
-            _count: true,
-            where: { status: "completed" }
+        }),
+        db.purchase.count({
+            where: { ...where, status: "completed" }
         })
     ]);
 
+    // ✅ Serializar BigInt fields
+    const serializedPurchases = purchases.map(purchase => ({
+        ...purchase,
+        amountCents: Number(purchase.amountCents),
+        license: purchase.license ? {
+            ...purchase.license,
+            hoursTotal: Number(purchase.license.hoursTotal),
+            priceCents: Number(purchase.license.priceCents)
+        } : null
+    }));
+
     const totalPages = Math.ceil(totalPurchases / limit);
+
+    const stats = {
+        totalRevenue: Number(totalRevenue._sum.amountCents || 0),
+        totalCompleted: totalCompleted || 0
+    };
 
     return json({
         user,
-        purchases,
+        purchases: serializedPurchases,
         totalPurchases,
         totalPages,
         currentPage: page,
-        filters: { status },
-        stats: {
-            totalRevenue: Number(stats._sum.amountCents || 0),
-            totalCompleted: stats._count
-        }
+        filters: { search, status, paymentMethod },
+        stats
     });
 };
 

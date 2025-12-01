@@ -50,7 +50,7 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
             orderBy: { createdAt: 'desc' },
             take: 20
         }),
-        db.userMetric.findUnique({
+        db.userMetric.findFirst({
             where: { userId }
         })
     ]);
@@ -58,6 +58,29 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     if (!targetUser) {
         throw new Response("User not found", { status: 404 });
     }
+
+    // ✅ Serializar campos BigInt y Decimal
+    const serializedTargetUser = {
+        ...targetUser,
+        userLicenses: targetUser.userLicenses.map(ul => ({
+            ...ul,
+            hoursRemaining: Number(ul.hoursRemaining),
+            license: {
+                ...ul.license,
+                hoursTotal: Number(ul.license.hoursTotal),
+                priceCents: Number(ul.license.priceCents)
+            }
+        })),
+        purchases: targetUser.purchases.map(p => ({
+            ...p,
+            amountCents: Number(p.amountCents)
+        }))
+    };
+
+    const serializedUserMetrics = userMetrics ? {
+        ...userMetrics,
+        hoursUsedTotal: Number(userMetrics.hoursUsedTotal)
+    } : null;
 
     // Calcular permisos en el servidor
     const isCurrentUserSuperAdmin = isSuperAdmin(user);
@@ -74,11 +97,10 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
     return json({
         user,
-        targetUser,
+        targetUser: serializedTargetUser,
         roles: availableRoles,
         auditLogs,
-        userMetrics,
-        // Pasar permisos calculados al cliente
+        userMetrics: serializedUserMetrics,
         permissions: {
             isCurrentUserSuperAdmin,
             isTargetUserSuperAdmin,

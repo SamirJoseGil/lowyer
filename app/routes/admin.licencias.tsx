@@ -14,69 +14,64 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         throw new Response("Not Found", { status: 404 });
     }
 
-    const [licenses, userLicenses, stats] = await Promise.all([
-        db.license.findMany({
-            include: {
-                _count: {
-                    select: {
-                        userLicenses: true,
-                        purchases: true
+    const licenses = await db.license.findMany({
+        include: {
+            _count: {
+                select: {
+                    userLicenses: true,
+                    purchases: true
+                }
+            }
+        },
+        orderBy: { createdAt: 'desc' }
+    });
+
+    // Fetch user licenses with user and license info
+    const userLicenses = await db.userLicense.findMany({
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    email: true,
+                    profile: {
+                        select: {
+                            firstName: true,
+                            lastName: true
+                        }
                     }
                 }
             },
-            orderBy: { type: 'asc' }
-        }),
-        db.userLicense.findMany({
-            include: {
-                user: {
-                    include: {
-                        profile: true
-                    }
-                },
-                license: true
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 20
-        }),
-        db.userLicense.aggregate({
-            _count: true,
-            where: { status: 'active' }
-        })
-    ]);
+            license: {
+                select: {
+                    id: true,
+                    name: true,
+                    hoursTotal: true
+                }
+            }
+        },
+        orderBy: { startedAt: 'desc' }
+    });
 
-    // Serialize BigInt and Decimal fields
+    // Serializar BigInt y Decimal fields
     const serializedLicenses = licenses.map(license => ({
         ...license,
         hoursTotal: Number(license.hoursTotal),
-        priceCents: Number(license.priceCents),
-        _count: license._count
+        priceCents: Number(license.priceCents)
     }));
 
-    const serializedUserLicenses = userLicenses.map(ul => ({
-        ...ul,
-        hoursRemaining: Number(ul.hoursRemaining),
+    const serializedUserLicenses = userLicenses.map(userLicense => ({
+        ...userLicense,
+        hoursRemaining: Number(userLicense.hoursRemaining),
         license: {
-            ...ul.license,
-            hoursTotal: Number(ul.license.hoursTotal),
-            priceCents: Number(ul.license.priceCents)
+            ...userLicense.license,
+            hoursTotal: Number(userLicense.license.hoursTotal)
         }
     }));
-
-    // Tasas de cambio (estas deberían venir de una API o configuración)
-    const exchangeRates = {
-        USD_TO_COP: 4000,
-        EUR_TO_COP: 4360,
-        MXN_TO_COP: 235
-    };
 
     return json({
         user,
         licenses: serializedLicenses,
-        userLicenses: serializedUserLicenses,
-        stats: {
-            activeLicenses: stats._count
-        },
-        exchangeRates
+        userLicenses: serializedUserLicenses
     });
 };
 
@@ -88,30 +83,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const formData = await request.formData();
-    const action = formData.get("action");
+    const actionType = formData.get("action");
 
     try {
-        switch (action) {
+        switch (actionType) {
             case "create-license": {
-                const name = formData.get("name")?.toString();
-                const type = formData.get("type")?.toString();
-                const hoursTotal = parseFloat(formData.get("hoursTotal")?.toString() || "0");
-                const validityDays = formData.get("validityDays")?.toString();
-                const priceCents = parseInt(formData.get("priceCents")?.toString() || "0");
-                const appliesTo = formData.get("appliesTo")?.toString() || "both";
-                const currency = formData.get("currency")?.toString() || "COP";
+                const name = formData.get("name") as string;
+                const type = formData.get("type") as string;
+                const hoursTotal = parseFloat(formData.get("hoursTotal") as string);
+                const validityDaysRaw = formData.get("validityDays");
+                const appliesTo = formData.get("appliesTo") as string;
+                const priceCents = parseInt(formData.get("priceCents") as string);
+                const currency = (formData.get("currency") as string) || "COP";
 
-                if (!name || !type || !hoursTotal) {
-                    return json({ error: "Nombre, tipo y horas son requeridos" }, { status: 400 });
+                // validityDays puede ser vacío o 0 para infinito
+                let validityDays = 9999;
+                if (validityDaysRaw !== null && validityDaysRaw !== "" && !isNaN(Number(validityDaysRaw))) {
+                    validityDays = parseInt(validityDaysRaw as string);
+                    if (validityDays === 0) validityDays = 9999;
                 }
 
-                // Validar validityDays: puede ser null (infinito) o un número positivo
-                const parsedValidityDays = validityDays && validityDays !== "" && validityDays !== "0" 
-                    ? parseInt(validityDays) 
-                    : null;
-
-                if (parsedValidityDays !== null && parsedValidityDays <= 0) {
-                    return json({ error: "Los días de validez deben ser positivos o dejar en blanco para infinito" }, { status: 400 });
+                if (
+                    !name ||
+                    !type ||
+                    isNaN(hoursTotal) ||
+                    isNaN(priceCents) ||
+                    !appliesTo
+                ) {
+                    return json({ error: "Datos inválidos" }, { status: 400 });
                 }
 
                 await db.license.create({
@@ -119,34 +118,72 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                         name,
                         type,
                         hoursTotal,
-                        validityDays: parsedValidityDays || 9999, // 9999 días = ~27 años (prácticamente infinito)
-                        priceCents,
+                        validityDays,
                         appliesTo,
+                        priceCents: BigInt(priceCents),
                         currency,
-                        active: true
-                    }
+                        active: true,
+                    },
                 });
 
-                return json({ success: `Licencia creada correctamente${parsedValidityDays === null ? ' (infinita)' : ''}` });
+                return json({ success: "Licencia creada correctamente" });
             }
 
             case "toggle-license": {
-                const licenseId = formData.get("licenseId")?.toString();
+                const licenseId = formData.get("licenseId") as string;
                 if (!licenseId) {
-                    return json({ error: "ID de licencia requerido" }, { status: 400 });
+                    return json({ error: "ID de licencia faltante" }, { status: 400 });
                 }
-
                 const license = await db.license.findUnique({ where: { id: licenseId } });
                 if (!license) {
                     return json({ error: "Licencia no encontrada" }, { status: 404 });
                 }
-
                 await db.license.update({
                     where: { id: licenseId },
-                    data: { active: !license.active }
+                    data: { active: !license.active },
+                });
+                return json({ success: "Estado de licencia actualizado" });
+            }
+
+            case "assign-license": {
+                const userEmail = formData.get("userEmail") as string;
+                const licenseId = formData.get("licenseId") as string;
+
+                if (!userEmail || !licenseId) {
+                    return json({ error: "Email de usuario y licencia requeridos" }, { status: 400 });
+                }
+
+                // Buscar usuario por email
+                const targetUser = await db.user.findUnique({
+                    where: { email: userEmail },
                 });
 
-                return json({ success: `Licencia ${!license.active ? 'activada' : 'desactivada'}` });
+                if (!targetUser) {
+                    return json({ error: "Usuario no encontrado" }, { status: 404 });
+                }
+
+                // Buscar licencia
+                const license = await db.license.findUnique({
+                    where: { id: licenseId },
+                });
+
+                if (!license) {
+                    return json({ error: "Licencia no encontrada" }, { status: 404 });
+                }
+
+                // Asignar licencia al usuario
+                await db.userLicense.create({
+                    data: {
+                        userId: targetUser.id,
+                        licenseId: license.id,
+                        hoursRemaining: license.hoursTotal,
+                        startedAt: new Date(),
+                        expiresAt: license.validityDays >= 9999 ? null : new Date(Date.now() + license.validityDays * 24 * 60 * 60 * 1000),
+                        status: "active",
+                    },
+                });
+
+                return json({ success: "Licencia asignada correctamente" });
             }
 
             default:
@@ -159,8 +196,18 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function AdminLicencias() {
-    const { licenses, userLicenses, stats, exchangeRates } = useLoaderData<typeof loader>();
-    const [basePriceUSD, setBasePriceUSD] = useState<number>(0);
+    const { licenses, userLicenses } = useLoaderData<typeof loader>();
+    const [basePriceUSD, setBasePriceUSD] = useState(0);
+
+    // Hardcoded exchange rate for USD to COP (you can replace with a dynamic value if needed)
+    const exchangeRates = {
+        USD_TO_COP: 4000, // Ejemplo: 1 USD = 4000 COP
+    };
+
+    // Converts USD to COP using the exchange rate
+    const convertUSDToCOP = (usd: number) => {
+        return Math.round(usd * exchangeRates.USD_TO_COP);
+    };
 
     const formatCurrency = (cents: number) => {
         return new Intl.NumberFormat('es-CO', {
@@ -186,11 +233,6 @@ export default function AdminLicencias() {
             case 'trial': return 'bg-blue-100 text-blue-800';
             default: return 'bg-gray-100 text-gray-800';
         }
-    };
-
-    // Función de conversión de monedas (ahora en cliente, usando tasas del servidor)
-    const convertUSDToCOP = (usd: number): number => {
-        return Math.round(usd * exchangeRates.USD_TO_COP);
     };
 
     return (
@@ -238,33 +280,47 @@ export default function AdminLicencias() {
                     <div className="h-0.5 bg-gradient-to-r from-indigo-400 via-transparent to-purple-400" />
                 </motion.div>
 
-                {/* Stats Card */}
+                {/* Asignar Licencia a Usuario */}
                 <motion.div
-                    initial={{ opacity: 0, y: 20 }}
+                    initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="mb-12 bg-white shadow-xl rounded-2xl border-2 border-indigo-100 p-6"
-                    style={{ borderRadius: "2px" }}
+                    transition={{ delay: 0.7 }}
+                    className="border-2 border-dashed border-green-200 rounded-xl p-5 mt-6 mb-8"
                 >
-                    <div className="flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-medium text-gray-600"
-                               style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                                Licencias Activas
-                            </p>
-                            <p className="text-3xl font-bold text-gray-900 mt-2"
-                               style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                                {stats.activeLicenses}
-                            </p>
-                        </div>
-                        <div className="p-4 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-2xl shadow-lg">
-                            <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
-                                <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
-                            </svg>
-                        </div>
-                    </div>
+                    <Form method="post" className="space-y-3">
+                        <input type="hidden" name="action" value="assign-license" />
+                        <h4 className="font-bold text-gray-900 mb-3"
+                            style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                            🎁 Asignar Licencia a Usuario
+                        </h4>
+                        <input
+                            type="email"
+                            name="userEmail"
+                            placeholder="Email del usuario"
+                            required
+                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 w-full"
+                        />
+                        <select
+                            name="licenseId"
+                            required
+                            className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 w-full"
+                        >
+                            <option value="">Selecciona una licencia</option>
+                            {licenses.map((license) => (
+                                <option key={license.id} value={license.id}>
+                                    {license.name} ({license.type})
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            type="submit"
+                            className="w-full px-4 py-2 bg-gradient-to-r from-green-600 to-blue-600 text-white font-semibold rounded-lg hover:from-green-700 hover:to-blue-700 transition-all"
+                        >
+                            Asignar Licencia
+                        </button>
+                    </Form>
                 </motion.div>
+
 
                 {/* Main Content Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

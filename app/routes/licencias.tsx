@@ -2,13 +2,43 @@ import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
 import { useLoaderData, Form, Link } from "@remix-run/react";
 import { motion } from "framer-motion";
-import { requireUser } from "~/lib/auth.server";
+import { getUser } from "~/lib/auth.server"; // ✅ Cambiar a getUser en lugar de requireUser
 import { getUserActiveLicense } from "~/lib/licenses.server";
-import { canClaimTrial, claimTrial } from "~/lib/trial.server"; // ✅ Importar desde trial.server.ts
+import { canClaimTrial, claimTrial } from "~/lib/trial.server";
 import { db } from "~/lib/db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-    const user = await requireUser(request);
+    console.log(`📄 [LICENCIAS] Loading licenses page...`);
+    
+    // ✅ Usar getUser en lugar de requireUser para permitir acceso sin login
+    const user = await getUser(request);
+    
+    // Si no hay usuario, mostrar licencias pero sin funcionalidad de compra
+    if (!user) {
+        console.log(`👤 [LICENCIAS] User not logged in, showing public view`);
+        
+        const licenses = await db.license.findMany({
+            where: { active: true },
+            orderBy: { priceCents: 'asc' }
+        });
+
+        const serializedLicenses = licenses.map(l => ({
+            ...l,
+            hoursTotal: Number(l.hoursTotal),
+            priceCents: Number(l.priceCents)
+        }));
+
+        return json({
+            user: null,
+            activeLicense: null,
+            licenses: serializedLicenses,
+            canClaimTrial: false,
+            licenseHistory: [],
+            isPublicView: true // ✅ Flag para mostrar vista pública
+        });
+    }
+
+    console.log(`👤 [LICENCIAS] Loading for user: ${user.email}`);
     
     const [activeLicense, licenses, canClaim, userLicenseHistory] = await Promise.all([
         getUserActiveLicense(user.id),
@@ -16,7 +46,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
             where: { active: true },
             orderBy: { priceCents: 'asc' }
         }),
-        canClaimTrial(user.id), // ✅ Ahora debería funcionar
+        canClaimTrial(user.id),
         db.userLicense.findMany({
             where: { userId: user.id },
             include: { license: true },
@@ -52,26 +82,41 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         }
     }));
 
+    console.log(`✅ [LICENCIAS] Data loaded successfully`);
+
     return json({
         user,
         activeLicense: serializedActiveLicense,
         licenses: serializedLicenses,
         canClaimTrial: canClaim,
-        licenseHistory: serializedHistory
+        licenseHistory: serializedHistory,
+        isPublicView: false
     });
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-    const user = await requireUser(request);
+    console.log(`🔄 [LICENCIAS] Processing action...`);
+    
+    // ✅ Para el action sí necesitamos usuario autenticado
+    const user = await getUser(request);
+    
+    if (!user) {
+        console.log(`❌ [LICENCIAS] Action requires authentication`);
+        return json({ error: "Debes iniciar sesión para realizar esta acción" }, { status: 401 });
+    }
+    
     const formData = await request.formData();
     const action = formData.get("action");
 
     if (action === "claim-trial") {
-        const result = await claimTrial(user.id); // ✅ Importado desde trial.server.ts
+        console.log(`🎁 [LICENCIAS] User ${user.email} claiming trial...`);
+        const result = await claimTrial(user.id);
         
         if (result.success) {
+            console.log(`✅ [LICENCIAS] Trial claimed successfully`);
             return redirect("/licencias?trial=claimed");
         } else {
+            console.log(`❌ [LICENCIAS] Trial claim failed: ${result.error}`);
             return json({ error: result.error }, { status: 400 });
         }
     }
@@ -80,7 +125,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 };
 
 export default function Licencias() {
-    const { activeLicense, licenses, canClaimTrial, licenseHistory } = useLoaderData<typeof loader>();
+    const { activeLicense, licenses, canClaimTrial, licenseHistory, user, isPublicView } = useLoaderData<typeof loader>();
 
     const formatCurrency = (cents: number) => {
         return new Intl.NumberFormat('es-CO', {
@@ -155,8 +200,45 @@ export default function Licencias() {
                     <div className="h-0.5 bg-gradient-to-r from-blue-300 via-transparent to-purple-300 mt-8 max-w-xs mx-auto" />
                 </motion.div>
 
+                {/* ✅ Mensaje si no está logueado */}
+                {isPublicView && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="mb-12 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-200 rounded-3xl p-8 text-center"
+                    >
+                        <div className="flex items-center justify-center mb-4">
+                            <svg className="w-12 h-12 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                            </svg>
+                        </div>
+                        <h3 className="text-2xl font-bold text-gray-900 mb-2"
+                            style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+                            Inicia sesión para adquirir una licencia
+                        </h3>
+                        <p className="text-gray-600 mb-6">
+                            Crea una cuenta gratis y obtén 2 horas de trial para probar nuestros servicios
+                        </p>
+                        <div className="flex items-center justify-center space-x-4">
+                            <Link
+                                to="/login"
+                                className="px-6 py-3 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-all shadow-lg"
+                            >
+                                Iniciar Sesión
+                            </Link>
+                            <Link
+                                to="/signup"
+                                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all shadow-lg"
+                            >
+                                Crear Cuenta Gratis
+                            </Link>
+                        </div>
+                    </motion.div>
+                )}
+
                 {/* Active License Card */}
-                {activeLicense && (
+                {activeLicense && !isPublicView && (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
@@ -250,7 +332,7 @@ export default function Licencias() {
                 )}
 
                 {/* Trial Claim Card */}
-                {!activeLicense && canClaimTrial && (
+                {!activeLicense && canClaimTrial && !isPublicView && (
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -392,10 +474,22 @@ export default function Licencias() {
                                         <motion.button
                                             whileHover={{ scale: 1.05 }}
                                             whileTap={{ scale: 0.95 }}
+                                            onClick={() => {
+                                                if (isPublicView) {
+                                                    // ✅ Redirigir a registro si no está logueado
+                                                    window.location.href = '/signup';
+                                                } else {
+                                                    // ✅ Lógica de compra (próxima fase)
+                                                    alert('Funcionalidad de compra próximamente');
+                                                }
+                                            }}
                                             className={`w-full py-3 bg-gradient-to-r ${getTypeGradient(license.type)} text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all`}
                                             style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
                                         >
-                                            {license.type === 'trial' ? 'Obtener Gratis' : 'Comprar Ahora'}
+                                            {isPublicView 
+                                                ? 'Crear Cuenta para Comprar'
+                                                : license.type === 'trial' ? 'Obtener Gratis' : 'Comprar Ahora'
+                                            }
                                         </motion.button>
                                     </div>
                                 </div>
@@ -405,7 +499,7 @@ export default function Licencias() {
                 </div>
 
                 {/* License History */}
-                {licenseHistory.length > 0 && (
+                {licenseHistory.length > 0 && !isPublicView && (
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}

@@ -8,19 +8,21 @@ Su propósito es brindar un servicio **seguro, confiable y escalable**, donde lo
 
 ## 🚀 Estado del Proyecto
 
-### ✅ Fases Completadas (1-5)
+### ✅ Fases Completadas (1-5 + 6A)
 
-**Progreso actual: 83% del Core MVP completado**
+**Progreso actual: 88% del Core MVP completado**
 
 - ✅ **Fase 1: Fundación** - Prisma + Supabase + Autenticación básica
 - ✅ **Fase 2: Roles y Usuarios** - Sistema completo de gestión de usuarios
 - ✅ **Fase 3: Licencias** - Trial automático/manual + control de horas
 - ✅ **Fase 4: Chat Básico** - Chat funcional con estados y persistencia
 - ✅ **Fase 5: IA Legal** - Gemini AI especializado en derecho colombiano
+- ✅ **Fase 6A: Notificaciones** - Sistema en tiempo real con SSE
 
 ### 🔄 En Desarrollo
 
-- 🔄 **Fase 6: Pagos y Facturación** - Integración con Wompi (Próxima)
+- 🔄 **Fase 6B: Mensajería WebSocket** - Chat en tiempo real (Próxima)
+- 🔄 **Fase 6C: Portal de Abogados** - Dashboard para abogados (Próxima)
 
 ### ⏳ Pendientes
 
@@ -29,6 +31,14 @@ Su propósito es brindar un servicio **seguro, confiable y escalable**, donde lo
 - ⏳ **Fase 9: Optimización y Deploy**
 
 ## 🌟 Características Principales
+
+### 🔔 Sistema de Notificaciones en Tiempo Real (NUEVO)
+- **Server-Sent Events (SSE)** para notificaciones instantáneas
+- **Notificaciones del navegador** con permisos del usuario
+- **Centro de notificaciones** con historial completo
+- **Badge animado** con contador de no leídas
+- **Preferencias personalizables** por tipo de notificación
+- **Prioridades visuales** (baja, normal, alta, urgente)
 
 ### 🤖 Asistente Legal con IA (Gemini 2.5 Flash)
 - **20 áreas del derecho colombiano** cubiertas
@@ -56,6 +66,7 @@ Su propósito es brindar un servicio **seguro, confiable y escalable**, donde lo
 - **Estados de mensaje**: Enviado, entregado, leído
 - **Persistencia completa**: Todos los mensajes en BD
 - **Control de acceso**: Solo con licencia válida
+- **Notificaciones en tiempo real**: SSE para mensajes nuevos
 
 ### 🛡️ Seguridad
 - **Autenticación robusta**: Email + contraseña con bcrypt
@@ -73,6 +84,7 @@ Su propósito es brindar un servicio **seguro, confiable y escalable**, donde lo
 - **TailwindCSS** - Styling utility-first
 - **Framer Motion** - Animaciones fluidas
 - **Heroicons** - Iconografía SVG
+- **EventSource API** - SSE para notificaciones
 
 ### Backend
 - **Prisma** - ORM y gestión de BD
@@ -80,6 +92,7 @@ Su propósito es brindar un servicio **seguro, confiable y escalable**, donde lo
 - **Node.js 20+** - Runtime del servidor
 - **bcryptjs** - Hash de contraseñas
 - **Zod** - Validación de schemas
+- **Server-Sent Events** - Notificaciones en tiempo real
 
 ### IA y APIs Externas
 - **Google Gemini 2.5 Flash** - IA legal especializada

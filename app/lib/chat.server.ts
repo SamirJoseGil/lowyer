@@ -1,7 +1,9 @@
 import { db } from "./db.server";
 import { hasValidLicense } from "./licenses.server";
 import { startSession, endSession } from "./hours-tracking.server";
-import { getGeminiResponse } from "./gemini.server";
+import { generateAIResponse } from "./ai-models.server";
+import { getOrCreateConversation, addMessage, formatHistoryForAI } from "./conversation.server";
+import { notifyNewMessage } from "./notifications/notification-sender.server";
 
 export type ChatParticipant = "user" | "abogado" | "admin" | "ia";
 
@@ -123,7 +125,7 @@ export async function sendMessage(
   content: string,
   senderRole: ChatParticipant
 ): Promise<{ success: boolean; message?: any; aiResponse?: any; error?: string }> {
-  console.log(`📤 Sending message in session ${sessionId} from ${senderRole}: "${content.substring(0, 50)}..."`);
+  console.log(`📤 Sending message in session ${sessionId} from ${senderRole}`);
   
   try {
     // Verificar que la sesión existe y está activa
@@ -136,30 +138,26 @@ export async function sendMessage(
     });
 
     if (!session) {
-      console.log(`❌ Session ${sessionId} not found`);
       return { success: false, error: "Sesión de chat no encontrada" };
     }
 
     if (session.status !== "active") {
-      console.log(`❌ Session ${sessionId} is not active (status: ${session.status})`);
       return { success: false, error: "La sesión de chat no está activa" };
     }
 
     // Verificar permisos del remitente
     const canSend = await verifyMessagePermissions(session, senderId, senderRole);
     if (!canSend) {
-      console.log(`❌ User ${senderId} doesn't have permission to send messages in session ${sessionId}`);
-      return { success: false, error: "No tienes permisos para enviar mensajes en esta sesión" };
+      return { success: false, error: "No tienes permisos para enviar mensajes" };
     }
 
     // Validar contenido del mensaje
     const contentValidation = validateMessageContent(content);
     if (!contentValidation.valid) {
-      console.log(`❌ Invalid message content: ${contentValidation.error}`);
       return { success: false, error: contentValidation.error };
     }
 
-    // Crear mensaje del usuario
+    // Crear mensaje del usuario en la tabla messages
     const userMessage = await db.message.create({
       data: {
         chatSessionId: sessionId,
@@ -179,72 +177,74 @@ export async function sendMessage(
 
     console.log(`✅ User message created: ${userMessage.id}`);
 
-    // Actualizar timestamp de la sesión
-    await db.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        metadata: {
-          ...((typeof session.metadata === "object" && session.metadata !== null) ? session.metadata : {}),
-          lastActivity: new Date()
-        }
-      }
-    });
+    // 🔔 NUEVO: Enviar notificación al destinatario
+    if (session.userId !== senderId) {
+      // Notificar al usuario si el mensaje es del abogado
+      const senderName = userMessage.sender?.profile?.firstName 
+        ? `${userMessage.sender.profile.firstName} ${userMessage.sender.profile.lastName || ''}`
+        : 'Tu abogado';
+      
+      await notifyNewMessage(session.userId, senderName, sessionId);
+    } else if (session.lawyerId && session.lawyer?.userId) {
+      // Notificar al abogado si el mensaje es del usuario
+      const senderName = userMessage.sender?.profile?.firstName 
+        ? `${userMessage.sender.profile.firstName} ${userMessage.sender.profile.lastName || ''}`
+        : 'Un usuario';
+      
+      await notifyNewMessage(session.lawyer.userId, senderName, sessionId);
+    }
 
     let aiResponse = null;
 
-    // Si es un chat con IA, generar respuesta automática
-    if (session.metadata && typeof session.metadata === "object" && session.metadata !== null && (session.metadata as any).chatType === "ia" && senderRole === "user") {
+    // Si es un chat con IA, generar respuesta usando el nuevo sistema
+    if (session.metadata && typeof session.metadata === "object" && 
+        session.metadata !== null && (session.metadata as any).chatType === "ia" && 
+        senderRole === "user") {
+      
       console.log(`🤖 Generating AI response for session ${sessionId}`);
       
       try {
-        // Obtener historial de conversación para contexto
-        const previousMessages = await db.message.findMany({
-          where: { chatSessionId: sessionId },
-          orderBy: { createdAt: 'asc' },
-          take: 10, // Últimos 10 mensajes para contexto
-          include: {
-            sender: {
-              include: {
-                profile: true
-              }
-            }
+        // Obtener o crear conversación para el usuario
+        const conversation = await getOrCreateConversation(senderId);
+        
+        // Agregar mensaje del usuario a la conversación
+        await addMessage(conversation.id, "usuario", content);
+        
+        // Obtener historial formateado para la IA
+        const conversationHistory = await formatHistoryForAI(conversation.id);
+        
+        console.log(`📚 Using conversation history with ${conversationHistory.length} messages`);
+
+        // Generar respuesta con el sistema multi-modelo
+        const aiResult = await generateAIResponse(
+          content,
+          conversationHistory,
+          {
+            temperature: 0.7,
+            maxTokens: 2048
           }
-        });
+        );
 
-        // Construir historial para Gemini
-        const conversationHistory = previousMessages
-          .filter(msg => msg.id !== userMessage.id) // Excluir el mensaje actual
-          .map(msg => {
-            const role = msg.senderRole === "user" ? "Usuario" : "Asistente";
-            return `${role}: ${msg.content}`;
-          });
-
-        console.log(`📚 Using conversation history with ${conversationHistory.length} previous messages`);
-
-        // Generar respuesta con Gemini (ahora con cache y contexto legal)
-        const geminiResponse = await getGeminiResponse(content, conversationHistory, {
-          userId: senderId,
-          sessionId: sessionId,
-          useCache: true
-        });
-
-        if (geminiResponse.success && geminiResponse.response) {
-          console.log(`🎯 Gemini response generated successfully ${geminiResponse.fromCache ? '(from cache)' : '(fresh)'}`);
+        if (aiResult.success && aiResult.response) {
+          console.log(`🎯 AI response generated successfully with ${aiResult.model}`);
           
-          // Crear mensaje de respuesta de IA
+          // Agregar respuesta de la IA a la conversación
+          await addMessage(conversation.id, "ia", aiResult.response);
+          
+          // Crear mensaje de respuesta de IA en el chat
           aiResponse = await db.message.create({
             data: {
               chatSessionId: sessionId,
               senderId: null, // IA no tiene senderId
               senderRole: "ia",
-              content: geminiResponse.response,
+              content: aiResult.response,
               status: "sent"
             }
           });
 
           console.log(`✅ AI response message created: ${aiResponse.id}`);
         } else {
-          console.log(`❌ Failed to generate AI response: ${geminiResponse.error}`);
+          console.log(`❌ Failed to generate AI response: ${aiResult.error}`);
           
           // Crear mensaje de error
           aiResponse = await db.message.create({

@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Bars3Icon, XMarkIcon, ChevronDownIcon, BellIcon } from "@heroicons/react/24/outline";
 import clsx from "clsx";
 import TrialNotificationModal from "./TrialNotificationModal";
+import { NotificationBell } from "./Notifications/NotificationBell";
 
 const navigation = [
     { name: "Inicio", href: "/" },
@@ -57,16 +58,16 @@ export default function Navbar({ user, activeLicense }: NavbarProps) {
 
     // Determinar la ruta del dashboard según el rol
     const getDashboardRoute = () => {
-        if (!user) return '/dashboard';
+        if (!user) return '/';
 
         switch (user.role?.name) {
             case 'superadmin':
             case 'admin':
                 return '/admin';
             case 'abogado':
-                return '/dashboard/abogado';
+                return '/abogado';
             default:
-                return '/dashboard';
+                return '/';
         }
     };
 
@@ -125,6 +126,9 @@ export default function Navbar({ user, activeLicense }: NavbarProps) {
                         {user ? (
                             <>
                                 {/* Notification Bell */}
+                                <NotificationBell />
+
+                                {/* Notification Bell for Trial Users */}
                                 {isChat && hasTrialNotification && (
                                     <motion.button
                                         onClick={() => setNotificationModalOpen(true)}

@@ -74,6 +74,10 @@ model User {
   reviewedLawyerDocuments LawyerDocument[] @relation("ReviewedBy")
   reviewedMessageModerations MessageModeration[] @relation("ReviewedBy")
   legalConsultations LegalConsultation[]
+  conversaciones Conversacion[]
+  notificaciones Notificacion[]
+  preferenciaNotificacion PreferenciaNotificacion?
+  presencia PresenciaUsuario?
 
   @@index([email])
   @@map("users")
@@ -122,11 +126,18 @@ model Lawyer {
   digitalSignatureUrl   String? @map("digital_signature_url")
   status                String  @default("pending")
 
+  // 🆕 Nuevos campos
+  maxConcurrentCases Int      @default(3) @map("max_concurrent_cases")
+  autoAcceptCases    Boolean  @default(false) @map("auto_accept_cases")
+  specializations    String[] // Áreas específicas
+
   user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents      LawyerDocument[]
   reviews        LawyerReview[]
   chatSessions   ChatSession[]
   lawyerMetrics  LawyerMetric[]
+  asignaciones   AsignacionCaso[]
+  disponibilidad DisponibilidadAbogado[]
 
   @@map("lawyers")
 }
@@ -258,12 +269,21 @@ model ChatSession {
   status            String       @default("active")
   summary           String?
   metadata          Json?
+  
+  // 🆕 Nuevos campos
+  lastMessageAt  DateTime?  @map("last_message_at") @db.Timestamptz(6)
+  unreadCount    Int @default(0) @map("unread_count")
+  priority       String @default("normal") // baja, normal, alta, urgente
+  tags           String[]
 
   user            User         @relation(fields: [userId], references: [id])
   lawyer          Lawyer?      @relation(fields: [lawyerId], references: [id])
   licenseInstance UserLicense? @relation(fields: [licenseInstanceId], references: [id])
   messages        Message[]
+  asignaciones    AsignacionCaso[]
 
+  @@index([lawyerId, status])
+  @@index([lastMessageAt])
   @@map("chat_sessions")
 }
 
@@ -275,10 +295,19 @@ model Message {
   content       String
   status        String   @default("sent")
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  // 🆕 Nuevos campos para WebSocket
+  readAt         DateTime?  @map("read_at") @db.Timestamptz(6)
+  deliveredAt    DateTime?  @map("delivered_at") @db.Timestamptz(6)
+  editedAt       DateTime?  @map("edited_at") @db.Timestamptz(6)
+  replyToId      String?    @map("reply_to_id") @db.Uuid
+  attachments    Json?
 
   chatSession       ChatSession         @relation(fields: [chatSessionId], references: [id], onDelete: Cascade)
   sender            User?               @relation(fields: [senderId], references: [id])
   messageModeration MessageModeration[]
+  replyTo           Message?            @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies           Message[]           @relation("MessageReplies")
 
   @@index([chatSessionId])
   @@map("messages")
@@ -434,4 +463,197 @@ model LegalConsultation {
   legalArea LegalArea? @relation(fields: [legalAreaId], references: [id])
 
   @@map("legal_consultations")
+}
+
+// ---------- SISTEMA DE IA LEGAL ESPECIALIZADO ----------
+model AreaDerecho {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nombre      String   @unique
+  descripcion String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  subareas SubareaDerecho[]
+
+  @@map("areas_derecho")
+}
+
+model SubareaDerecho {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  areaId      String   @map("area_id") @db.Uuid
+  nombre      String
+  descripcion String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  area             AreaDerecho         @relation(fields: [areaId], references: [id], onDelete: Cascade)
+  normasSubareas   NormaSubarea[]
+  conceptosJuridicos ConceptoJuridico[]
+
+  @@unique([areaId, nombre])
+  @@map("subareas_derecho")
+}
+
+model Norma {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tipo        String   // Principal / Complementaria
+  nombre      String
+  anio        Int?     @map("anio")
+  descripcion String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  normasSubareas NormaSubarea[]
+
+  @@map("normas")
+}
+
+model NormaSubarea {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subareaId  String   @map("subarea_id") @db.Uuid
+  normaId    String   @map("norma_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  subarea SubareaDerecho @relation(fields: [subareaId], references: [id], onDelete: Cascade)
+  norma   Norma          @relation(fields: [normaId], references: [id], onDelete: Cascade)
+
+  @@unique([subareaId, normaId])
+  @@map("normas_subareas")
+}
+
+model ConceptoJuridico {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  subareaId  String   @map("subarea_id") @db.Uuid
+  concepto   String
+  definicion String
+  fuente     String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  subarea SubareaDerecho @relation(fields: [subareaId], references: [id], onDelete: Cascade)
+
+  @@map("conceptos_juridicos")
+}
+
+model Conversacion {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mensajes Mensaje[]
+
+  @@map("conversaciones")
+}
+
+model Mensaje {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  conversacionId String   @map("conversacion_id") @db.Uuid
+  rol            String   // usuario / ia
+  mensaje        String   @db.Text
+  timestamp      DateTime @default(now()) @db.Timestamptz(6)
+
+  conversacion Conversacion @relation(fields: [conversacionId], references: [id], onDelete: Cascade)
+
+  @@index([conversacionId])
+  @@map("mensajes")
+}
+
+model ConfiguracionIA {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  modeloActivo     String   @default("gemini") @map("modelo_activo") // gemini, openai, claude
+  apiKeyOpenAI     String?  @map("api_key_openai")
+  apiKeyClaude     String?  @map("api_key_claude")
+  apiKeyGemini     String?  @map("api_key_gemini")
+  temperaturaGlobal Decimal @default(0.7) @map("temperatura_global") @db.Decimal(3, 2)
+  maxTokensRespuesta Int    @default(2048) @map("max_tokens_respuesta")
+  ventanaContexto  Int      @default(20) @map("ventana_contexto")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("configuracion_ia")
+}
+
+// ---------- SISTEMA DE NOTIFICACIONES ----------
+model Notificacion {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  tipo        String   // nuevo_mensaje, caso_asignado, licencia_expira, etc.
+  titulo      String
+  mensaje     String
+  data        Json?    // metadata adicional
+  leida       Boolean  @default(false)
+  actionUrl   String?  @map("action_url")
+  prioridad   String   @default("normal") // baja, normal, alta, urgente
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  readAt      DateTime? @map("read_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, leida])
+  @@index([createdAt])
+  @@map("notificaciones")
+}
+
+model PreferenciaNotificacion {
+  id                    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                String  @unique @map("user_id") @db.Uuid
+  emailNotificaciones   Boolean @default(true) @map("email_notificaciones")
+  pushNotificaciones    Boolean @default(true) @map("push_notificaciones")
+  nuevosMensajes        Boolean @default(true) @map("nuevos_mensajes")
+  casosAsignados        Boolean @default(true) @map("casos_asignados")
+  actualizacionesSistema Boolean @default(false) @map("actualizaciones_sistema")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("preferencias_notificacion")
+}
+
+// 🆕 Sistema de Presencia
+model PresenciaUsuario {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String   @unique @map("user_id") @db.Uuid
+  status            String   @default("offline") // online, offline, away, busy
+  lastSeenAt        DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  currentSessionId  String?  @map("current_session_id") @db.Uuid
+  socketId          String?  @map("socket_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("presencia_usuario")
+}
+
+// 🆕 Sistema de Asignación de Casos para Abogados
+model AsignacionCaso {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  chatSessionId     String   @unique @map("chat_session_id") @db.Uuid
+  lawyerId          String   @map("lawyer_id") @db.Uuid
+  status            String   @default("pendiente") // pendiente, aceptado, rechazado, completado
+  priority          String   @default("normal") // baja, normal, alta, urgente
+  assignedAt        DateTime @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  acceptedAt        DateTime? @map("accepted_at") @db.Timestamptz(6)
+  completedAt       DateTime? @map("completed_at") @db.Timestamptz(6)
+  rejectionReason   String?  @map("rejection_reason")
+
+  chatSession ChatSession @relation(fields: [chatSessionId], references: [id])
+  lawyer      Lawyer      @relation(fields: [lawyerId], references: [id])
+
+  @@index([lawyerId, status])
+  @@index([assignedAt])
+  @@map("asignaciones_caso")
+}
+
+// 🆕 Disponibilidad de Abogados
+model DisponibilidadAbogado {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  lawyerId  String   @map("lawyer_id") @db.Uuid
+  dayOfWeek Int      @map("day_of_week") // 0-6 (domingo-sábado)
+  startTime String   @map("start_time") // HH:MM formato 24h
+  endTime   String   @map("end_time")   // HH:MM formato 24h
+
+  lawyer Lawyer @relation(fields: [lawyerId], references: [id], onDelete: Cascade)
+
+  @@unique([lawyerId, dayOfWeek, startTime])
+  @@map("disponibilidad_abogado")
 }

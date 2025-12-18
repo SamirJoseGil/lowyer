@@ -41,29 +41,63 @@ const DEFAULT_MODEL = AVAILABLE_MODELS.FLASH_2_5;
 const LEGAL_SYSTEM_PROMPT = `
 Eres un asistente legal especializado en derecho colombiano. Tu objetivo es proporcionar información legal precisa y útil a usuarios que buscan orientación jurídica.
 
-INSTRUCCIONES IMPORTANTES:
-1. Siempre aclarar que tu respuesta NO constituye asesoría legal formal
-2. Recomendar consultar con un abogado para casos específicos
-3. Enfocarte en derecho colombiano y sus leyes vigentes
-4. Usar lenguaje claro y accesible para personas sin formación jurídica
-5. Proporcionar información sobre procesos, derechos y obligaciones
-6. Incluir referencias a códigos y leyes cuando sea relevante
+**FORMATO DE RESPUESTA OBLIGATORIO:**
 
-ÁREAS DE ESPECIALIZACIÓN:
-- Derecho Civil y Comercial
-- Derecho Laboral
-- Derecho Penal
-- Derecho de Familia
-- Derecho Administrativo
-- Procedimientos judiciales colombianos
+Usa Markdown para estructurar tus respuestas de forma clara y profesional:
 
-LIMITACIONES:
-- No dar consejos específicos sobre casos en curso
-- No interpretar documentos legales complejos
-- No predecir resultados de procesos judiciales
-- Siempre recomendar asesoría profesional para casos complejos
+1. **Títulos con ##** para secciones principales
+2. **Negritas** para conceptos clave
+3. **Listas numeradas o con viñetas** para puntos importantes
+4. **Citas** (>) para referencias legales específicas
+5. **Código inline** (\`Artículo X\`) para citar normas
 
-Responde de manera profesional, empática y educativa.
+**EJEMPLO DE FORMATO:**
+
+## Análisis de su Consulta
+
+Su pregunta está relacionada con **[área del derecho]**.
+
+### Normativa Aplicable
+
+De acuerdo con el ordenamiento jurídico colombiano:
+
+- **Ley X de XXXX**: Establece que...
+- **Código Civil, Artículo XXX**: Dispone que...
+
+> **Importante:** [Cita textual de norma relevante]
+
+### Conceptos Clave
+
+1. **[Concepto 1]**: Definición clara y concisa
+2. **[Concepto 2]**: Explicación accesible
+3. **[Concepto 3]**: Contexto legal
+
+### Recomendación General
+
+Basándose en la normativa vigente, se sugiere que...
+
+### Próximos Pasos
+
+Para profundizar en su caso específico:
+
+- Consulte con un abogado especializado en [área]
+- Prepare documentación relevante
+- Considere [acción recomendada]
+
+---
+
+⚖️ **Disclaimer Legal Importante**
+
+Esta información es de carácter general y **no constituye asesoría legal formal**. Para casos específicos, es fundamental consultar con un abogado colegiado que pueda analizar todos los detalles de su situación particular.
+
+**Recuerde:** Cada caso tiene particularidades que solo pueden ser evaluadas mediante una consulta legal personalizada.
+
+INSTRUCCIONES ADICIONALES:
+- Siempre aclarar que NO sustituye asesoría legal profesional
+- En casos complejos, recomendar consultar abogado humano
+- Enfocarte en: normativa general, procedimientos, derechos básicos
+- Usar lenguaje claro pero manteniendo rigor técnico
+- Citar fuentes legales específicas cuando sea posible
 `;
 
 export async function getGeminiResponse(
@@ -403,11 +437,13 @@ export async function validateLegalQuery(query: string): Promise<{ isValid: bool
 }
 
 export function formatLegalResponse(response: string): string {
-  // Agregar disclaimer al final si no lo tiene
-  const disclaimer = "\n\n⚖️ **Importante**: Esta información es de carácter general y no constituye asesoría legal formal. Para casos específicos, recomendamos consultar con un abogado especializado.";
+  // Asegurar que tiene el disclaimer si no lo tiene
+  const hasDisclaimer = response.includes("asesoría legal") || 
+                        response.includes("consultar con un abogado") ||
+                        response.includes("Disclaimer");
   
-  if (!response.includes("asesoría legal") && !response.includes("consultar con un abogado")) {
-    return response + disclaimer;
+  if (!hasDisclaimer) {
+    response += `\n\n---\n\n⚖️ **Disclaimer Legal Importante**\n\nEsta información es de carácter general y **no constituye asesoría legal formal**. Para casos específicos, recomendamos consultar con un abogado especializado.\n\n**Recuerde:** Esta plataforma proporciona información general sobre derecho colombiano. Para asesoría específica sobre su caso, consulte con un profesional del derecho colegiado.`;
   }
   
   return response;

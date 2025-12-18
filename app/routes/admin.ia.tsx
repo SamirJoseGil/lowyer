@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useNavigation } from "@remix-run/react";
+import { Form, useLoaderData, useNavigation } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { requireUser } from "~/lib/auth.server";
 import { isSuperAdmin } from "~/lib/permissions.server";
@@ -125,15 +125,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
                 const temperaturaGlobal = parseFloat(formData.get("temperaturaGlobal") as string);
                 const maxTokensRespuesta = parseInt(formData.get("maxTokensRespuesta") as string);
                 const ventanaContexto = parseInt(formData.get("ventanaContexto") as string);
+                const apiKeyOpenAI = formData.get("apiKeyOpenAI") as string;
+                const apiKeyGemini = formData.get("apiKeyGemini") as string;
                 
                 await updateAIConfig({
                     modeloActivo: modeloActivo as any,
                     temperaturaGlobal,
                     maxTokensRespuesta,
-                    ventanaContexto
+                    ventanaContexto,
+                    apiKeyOpenAI: apiKeyOpenAI || undefined,
+                    apiKeyGemini: apiKeyGemini || undefined
                 });
                 
-                return json({ success: true, message: "Configuración actualizada" });
+                console.log(`✅ AI config updated: Active model = ${modeloActivo}`);
+                
+                return json({ success: true, message: "Configuración actualizada correctamente" });
             }
 
             case "update-area": {

@@ -1,173 +1,106 @@
-import { useState, useEffect, useRef } from "react";
-import { motion } from "framer-motion";
+import { useState, useEffect } from "react";
+import { useFetcher } from "@remix-run/react";
 import MessageList from "./MessageList";
 import MessageInput from "./MessageInput";
 import ChatHeader from "./ChatHeader";
-import TypingIndicator from "./TypingIndicator";
 
 interface ChatContainerProps {
-    session: any;
-    initialMessages: any[];
-    userId: string;
+  session: any;
+  initialMessages: any[];
+  chatType: "ia" | "lawyer";
+  onSessionEnd: () => void;
 }
 
-export default function ChatContainer({ session, initialMessages, userId }: ChatContainerProps) {
-    const [messages, setMessages] = useState(initialMessages || []);
-    const [isPolling, setIsPolling] = useState(true);
-    const [showTyping, setShowTyping] = useState(false);
-    const pollingRef = useRef<NodeJS.Timeout>();
+export default function ChatContainer({
+  session,
+  initialMessages,
+  chatType,
+  onSessionEnd,
+}: ChatContainerProps) {
+  const [messages, setMessages] = useState(initialMessages);
+  const messageFetcher = useFetcher();
 
-    // Polling para obtener nuevos mensajes
-    useEffect(() => {
-        if (!isPolling) return;
+  // Poll para nuevos mensajes cada 3 segundos
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(
+          `/api/chat/messages?sessionId=${session.id}`
+        );
+        const newMessages = await response.json();
+        setMessages(newMessages);
+      } catch (error) {
+        console.error("Error fetching messages:", error);
+      }
+    }, 3000);
 
-        const pollMessages = async () => {
-            try {
-                const response = await fetch(`/api/chat/messages?sessionId=${session.id}&page=1&limit=50`);
-                if (response.ok) {
-                    const newMessages = await response.json();
-                    setMessages(newMessages);
-                }
-            } catch (error) {
-                console.error("Error polling messages:", error);
-            }
-        };
+    return () => clearInterval(interval);
+  }, [session.id]);
 
-        // Poll every 2 seconds
-        pollingRef.current = setInterval(pollMessages, 2000);
-
-        return () => {
-            if (pollingRef.current) {
-                clearInterval(pollingRef.current);
-            }
-        };
-    }, [session.id, isPolling]);
-
-    const handleMessageSent = (result: any) => {
-        if (result.success) {
-            // Mostrar indicador de "escribiendo" para respuesta de IA
-            if (result.aiResponse) {
-                setShowTyping(true);
-                setTimeout(() => {
-                    setShowTyping(false);
-                    // El polling se encargará de cargar los nuevos mensajes
-                }, 1000);
-            }
-
-            console.log(`📨 Message sent, polling will update UI`);
-        }
-    };
-
-    const handleCloseSession = async () => {
+  // Actualizar cuando llega respuesta del fetcher
+  useEffect(() => {
+    const fetchMessages = async () => {
+      if (messageFetcher.data) {
         try {
-            setIsPolling(false);
-
-            const response = await fetch("/api/chat/close", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    sessionId: session.id,
-                    summary: "Sesión cerrada por el usuario"
-                })
-            });
-
-            if (response.ok) {
-                console.log(`✅ Session closed successfully`);
-                window.location.reload(); // Reload to reset chat state
-            }
+          const response = await fetch(
+            `/api/chat/messages?sessionId=${session.id}`
+          );
+          const newMessages = await response.json();
+          setMessages(newMessages);
         } catch (error) {
-            console.error("Error closing session:", error);
+          console.error("Error fetching messages:", error);
         }
+      }
     };
+    fetchMessages();
+  }, [messageFetcher.data, session.id]);
 
-    const isSessionActive = session.status === "active";
-    const chatType = session.metadata?.chatType || "lawyer";
+  const handleSendMessage = (content: string) => {
+    // Validación adicional antes de enviar
+    if (!session || !session.id) {
+      console.error("❌ No session ID available");
+      return;
+    }
 
-    return (
-        <div className="flex-1 flex flex-col h-full bg-white">
-            {/* Chat Header */}
-            <ChatHeader
-                chatType={chatType}
-                session={session}
-                onEndSession={handleCloseSession}
-            />
+    if (!content || content.trim().length === 0) {
+      console.error("❌ Cannot send empty message");
+      return;
+    }
 
-            {/* Messages Container - ocupa todo el espacio disponible */}
-            <div className="flex-1 overflow-hidden">
-                <MessageList
-                    messages={messages}
-                    currentUserId={userId}
-                />
+    console.log(`📤 Sending message to session ${session.id}`);
 
-                {/* Typing Indicator */}
-                {showTyping && (
-                    <div className="px-6 pb-4">
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            className="flex items-start gap-3"
-                        >
-                            <div className="h-8 w-8 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center">
-                                <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082a.75.75 0 00-.678.744v.812M9.75 3.104a48.424 48.424 0 011.5 0M5 14.5c0 2.208 1.792 4 4 4s4-1.792 4-4M5 14.5c0-1.01.377-1.932 1-2.626M19 14.5v-5.714a2.25 2.25 0 00-.659-1.591L14.25 3.104M19 14.5c0 2.208-1.792 4-4 4s-4-1.792-4-4m8 0c1.01-.377 1.932-1 2.626-1" />
-                                </svg>
-                            </div>
-                            <div className="bg-gradient-to-r from-gray-100 to-gray-200 rounded-2xl px-4 py-3 max-w-xs border border-gray-200">
-                                <div className="flex items-center space-x-1">
-                                    <motion.div
-                                        className="w-2 h-2 bg-gray-500 rounded-full"
-                                        animate={{
-                                            scale: [1, 1.5, 1],
-                                            opacity: [0.5, 1, 0.5]
-                                        }}
-                                        transition={{
-                                            duration: 1.2,
-                                            repeat: Infinity,
-                                            delay: 0
-                                        }}
-                                    />
-                                    <motion.div
-                                        className="w-2 h-2 bg-gray-500 rounded-full"
-                                        animate={{
-                                            scale: [1, 1.5, 1],
-                                            opacity: [0.5, 1, 0.5]
-                                        }}
-                                        transition={{
-                                            duration: 1.2,
-                                            repeat: Infinity,
-                                            delay: 0.2
-                                        }}
-                                    />
-                                    <motion.div
-                                        className="w-2 h-2 bg-gray-500 rounded-full"
-                                        animate={{
-                                            scale: [1, 1.5, 1],
-                                            opacity: [0.5, 1, 0.5]
-                                        }}
-                                        transition={{
-                                            duration: 1.2,
-                                            repeat: Infinity,
-                                            delay: 0.4
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </div>
+    const formData = new FormData();
+    formData.append("sessionId", session.id);
+    formData.append("content", content.trim());
+    formData.append("senderRole", "user");
 
-            {/* Input Container - fijo en la parte inferior */}
-            <div className="flex-shrink-0 border-t-2 border-blue-100 bg-white">
-                <MessageInput
-                    sessionId={session.id}
-                    onMessageSent={handleMessageSent}
-                    disabled={!isSessionActive}
-                />
-            </div>
-        </div>
-    );
+    messageFetcher.submit(formData, {
+      method: "post",
+      action: "/api/chat/send",
+    });
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-white">
+      {/* Header */}
+      <ChatHeader session={session} chatType={chatType} onSessionEnd={onSessionEnd} />
+
+      {/* Messages - COMPONENTE CON SCROLL */}
+      <MessageList 
+        messages={messages} 
+        currentUserId={session.userId} 
+      />
+
+      {/* Input */}
+      <MessageInput
+        onSendMessage={handleSendMessage}
+        disabled={messageFetcher.state === "submitting"}
+        placeholder={
+          chatType === "ia"
+            ? "Escribe tu consulta legal..."
+            : "Escribe tu mensaje al abogado..."
+        }
+      />
+    </div>
+  );
 }

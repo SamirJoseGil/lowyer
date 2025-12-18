@@ -442,12 +442,12 @@ function validateMessageContent(content: string): { valid: boolean; error?: stri
     return { valid: false, error: "El mensaje no puede estar vacío" };
   }
 
-  if (content.length > 2000) {
-    return { valid: false, error: "El mensaje es demasiado largo (máximo 2000 caracteres)" };
+  if (content.length > 1000) {
+    return { valid: false, error: "El mensaje es demasiado largo (máximo 1000 caracteres)" };
   }
 
   // Filtro básico de contenido inapropiado
-  const inappropriateWords = ["spam", "scam"]; // Lista básica
+  const inappropriateWords = ["spam", "scam"];
   const hasInappropriate = inappropriateWords.some(word => 
     content.toLowerCase().includes(word.toLowerCase())
   );

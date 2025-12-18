@@ -79,6 +79,10 @@ model User {
   preferenciaNotificacion PreferenciaNotificacion?
   presencia PresenciaUsuario?
 
+  reviewedFAQs FAQ[] @relation("FAQReviewer")
+  faqVotes FAQVote[]
+  faqSearches FAQSearch[]
+
   @@index([email])
   @@map("users")
 }
@@ -344,12 +348,16 @@ model AuditLog {
 model Consent {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId         String   @map("user_id") @db.Uuid
-  termsVersion   String?  @map("terms_version")
-  privacyVersion String?  @map("privacy_version")
+  termsVersion   String   @map("terms_version")
+  privacyVersion String   @map("privacy_version")
+  cookiesVersion String   @map("cookies_version")
   acceptedAt     DateTime @default(now()) @map("accepted_at") @db.Timestamptz(6)
+  ipAddress      String?  @map("ip_address")
+  userAgent      String?  @map("user_agent")
 
   user User @relation(fields: [userId], references: [id])
 
+  @@index([userId, acceptedAt])
   @@map("consents")
 }
 
@@ -409,7 +417,7 @@ model LegalArea {
   description String
   mainLaw     String   @map("main_law")
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   complementaryLaws LegalComplementaryLaw[]
   aiResponses      AiResponseCache[]
@@ -433,9 +441,9 @@ model LegalComplementaryLaw {
 
 model AiResponseCache {
   id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  queryHash    String    @unique @map("query_hash") // Hash de la consulta
-  query        String    // Consulta original
-  response     String    // Respuesta de la IA
+  queryHash    String    @unique @map("query_hash")
+  query        String
+  response     String
   legalAreaId  String?   @map("legal_area_id") @db.Uuid
   hitCount     Int       @default(1) @map("hit_count")
   lastUsed     DateTime  @default(now()) @map("last_used") @db.Timestamptz(6)
@@ -455,8 +463,8 @@ model LegalConsultation {
   legalAreaId  String?  @map("legal_area_id") @db.Uuid
   sessionId    String?  @map("session_id") @db.Uuid
   aiModel      String   @default("gemini") @map("ai_model")
-  responseTime Int?     @map("response_time") // en millisegundos
-  satisfied    Boolean? // feedback del usuario
+  responseTime Int?     @map("response_time")
+  satisfied    Boolean?
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user      User       @relation(fields: [userId], references: [id])
@@ -496,7 +504,7 @@ model SubareaDerecho {
 
 model Norma {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tipo        String   // Principal / Complementaria
+  tipo        String
   nombre      String
   anio        Int?     @map("anio")
   descripcion String
@@ -560,16 +568,16 @@ model Mensaje {
 }
 
 model ConfiguracionIA {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  modeloActivo     String   @default("gemini") @map("modelo_activo") // gemini, openai, claude
-  apiKeyOpenAI     String?  @map("api_key_openai")
-  apiKeyClaude     String?  @map("api_key_claude")
-  apiKeyGemini     String?  @map("api_key_gemini")
-  temperaturaGlobal Decimal @default(0.7) @map("temperatura_global") @db.Decimal(3, 2)
-  maxTokensRespuesta Int    @default(2048) @map("max_tokens_respuesta")
-  ventanaContexto  Int      @default(20) @map("ventana_contexto")
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  id                     String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  modeloActivo           String   @default("gemini") @map("modelo_activo") // gemini, openai, claude
+  apiKeyGemini           String?  @map("api_key_gemini")
+  apiKeyOpenAI           String?  @map("api_key_openai")
+  apiKeyClaude           String?  @map("api_key_claude")
+  temperaturaGlobal      Decimal  @default(0.7) @map("temperatura_global") @db.Decimal(3, 2)
+  maxTokensRespuesta     Int      @default(2048) @map("max_tokens_respuesta")
+  ventanaContexto        Int      @default(20) @map("ventana_contexto")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@map("configuracion_ia")
 }
@@ -609,7 +617,6 @@ model PreferenciaNotificacion {
   @@map("preferencias_notificacion")
 }
 
-// 🆕 Sistema de Presencia
 model PresenciaUsuario {
   id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId            String   @unique @map("user_id") @db.Uuid
@@ -624,7 +631,6 @@ model PresenciaUsuario {
   @@map("presencia_usuario")
 }
 
-// 🆕 Sistema de Asignación de Casos para Abogados
 model AsignacionCaso {
   id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   chatSessionId     String   @unique @map("chat_session_id") @db.Uuid
@@ -644,7 +650,6 @@ model AsignacionCaso {
   @@map("asignaciones_caso")
 }
 
-// 🆕 Disponibilidad de Abogados
 model DisponibilidadAbogado {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   lawyerId  String   @map("lawyer_id") @db.Uuid
@@ -656,4 +661,66 @@ model DisponibilidadAbogado {
 
   @@unique([lawyerId, dayOfWeek, startTime])
   @@map("disponibilidad_abogado")
+}
+
+// ---------- SISTEMA DE FAQ ----------
+model FAQ {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pregunta        String
+  respuesta       String?  @db.Text
+  respuestaIA     String?  @map("respuesta_ia") @db.Text
+  categoria       String
+  usuarioEmail    String?  @map("usuario_email")
+  usuarioNombre   String?  @map("usuario_nombre")
+  estado          String   @default("pendiente") // pendiente, revisada, publicada, rechazada
+  relevancia      Int      @default(0)
+  vistas          Int      @default(0)
+  votosUtiles     Int      @default(0) @map("votos_utiles")
+  publicada       Boolean  @default(false)
+  procesadaPorIA  Boolean  @default(false) @map("procesada_por_ia")
+  confianzaIA     Float?   @map("confianza_ia")
+  revisadaPor     String?  @map("revisada_por") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  publicadaAt     DateTime? @map("publicada_at") @db.Timestamptz(6)
+  
+  revisor User?  @relation("FAQReviewer", fields: [revisadaPor], references: [id])
+  votes FAQVote[]
+  
+  @@index([estado, publicada])
+  @@index([relevancia, vistas])
+  @@index([categoria])
+  @@index([createdAt])
+  @@map("faqs")
+}
+
+model FAQVote {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  faqId     String   @map("faq_id") @db.Uuid
+  userId    String?  @map("user_id") @db.Uuid
+  ipAddress String   @map("ip_address")
+  util      Boolean
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  faq  FAQ   @relation(fields: [faqId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id])
+  
+  @@unique([faqId, ipAddress])
+  @@index([faqId])
+  @@map("faq_votes")
+}
+
+model FAQSearch {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  query      String
+  resultados Int      @default(0)
+  userId     String?  @map("user_id") @db.Uuid
+  ipAddress  String?  @map("ip_address")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  user User? @relation(fields: [userId], references: [id])
+  
+  @@index([query])
+  @@index([createdAt])
+  @@map("faq_searches")
 }

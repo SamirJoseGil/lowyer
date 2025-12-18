@@ -3,12 +3,31 @@ import { json } from "@remix-run/node";
 import { useLoaderData, Link } from "@remix-run/react";
 import { motion } from "framer-motion";
 import { getUser } from "~/lib/auth.server";
+import { needsConsentUpdate, getCurrentVersions } from "~/lib/compliance/consent.server";
 
 export const meta: MetaFunction = () => [{ title: "Inicio - Lawyer | Asistente Legal IA" }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const user = await getUser(request);
-  return json({ user });
+
+  if (user) {
+    const [needsConsent, versions] = await Promise.all([
+      needsConsentUpdate(user.id),
+      getCurrentVersions(),
+    ]);
+
+    return json({
+      user,
+      needsConsent,
+      versions,
+    });
+  }
+
+  return json({ 
+    user: null,
+    needsConsent: false,
+    versions: null,
+  });
 };
 
 export default function Index() {
@@ -116,78 +135,8 @@ export default function Index() {
             >
               Consultas jurídicas accesibles para todos los colombianos
             </motion.div>
-
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: "40%" }}
-              transition={{ duration: 0.8, delay: 1 }}
-              className="h-0.5 bg-blue-400 mx-auto"
-            />
           </motion.div>
-
-          {/* User Welcome or CTA */}
-          {user ? (
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 1, delay: 0.5 }}
-              className="mb-20"
-            >
-              <div className="glass-morphism rounded-2xl p-8 max-w-2xl mx-auto border border-blue-100/20 shadow-xl">
-                <div className="text-center mb-6">
-                  <div className="h-20 w-20 mx-auto rounded-full bg-gradient-to-r from-blue-400 to-cyan-400 flex items-center justify-center shadow-lg mb-4">
-                    <span className="text-2xl font-bold text-white">
-                      {user.profile?.firstName?.charAt(0) || user.email.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <h2 className="text-3xl font-bold text-gray-900 mb-2"
-                    style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                    Bienvenido, {user.profile?.firstName || user.email.split("@")[0]}
-                  </h2>
-                  <p className="text-gray-600 italic">¿En qué podemos ayudarte hoy?</p>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <Link
-                      to={getDashboardRoute()}
-                      className="block p-6 border-l-4 border-blue-400 bg-white rounded-lg hover:shadow-lg transition-all"
-                    >
-                      <div className="flex items-center mb-2">
-                        <svg className="h-6 w-6 text-blue-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zM3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6zM14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z" />
-                        </svg>
-                        <h3 className="font-bold text-gray-900"
-                          style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                          {user.role?.name === 'superadmin' || user.role?.name === 'admin' ? 'Panel Admin' :
-                            user.role?.name === 'abogado' ? 'Panel Abogado' : 'Mi Dashboard'}
-                        </h3>
-                      </div>
-                      <p className="text-sm text-gray-600">Gestiona tu cuenta y servicios</p>
-                    </Link>
-                  </motion.div>
-
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                    <Link
-                      to="/chat"
-                      className="block p-6 border-l-4 border-cyan-400 bg-white rounded-lg hover:shadow-lg transition-all"
-                    >
-                      <div className="flex items-center mb-2">
-                        <svg className="h-6 w-6 text-cyan-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clipRule="evenodd" />
-                        </svg>
-                        <h3 className="font-bold text-gray-900"
-                          style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                          Iniciar Consulta
-                        </h3>
-                      </div>
-                      <p className="text-sm text-gray-600">Habla con nuestra IA legal</p>
-                    </Link>
-                  </motion.div>
-                </div>
-              </div>
-            </motion.div>
-          ) : (
+            {!user &&(
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}

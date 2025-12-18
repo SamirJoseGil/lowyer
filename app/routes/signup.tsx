@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
 import { json, redirect } from "@remix-run/node";
-import { Form, Link, useActionData, useSearchParams } from "@remix-run/react";
-import { useEffect, useRef, useState } from "react";
+import { Form, Link, useActionData, useSearchParams, useNavigation } from "@remix-run/react";
+import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 
 import { createUser, getUserByEmail } from "~/lib/auth.server";
@@ -18,7 +18,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const email = formData.get("email");
     const password = formData.get("password");
     const confirmPassword = formData.get("confirmPassword");
-    const redirectTo = formData.get("redirectTo");
 
     if (!email || typeof email !== "string") {
         return json(
@@ -63,7 +62,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
             request,
             userId: user.id,
             remember: false,
-            redirectTo: "/chat", // Cambiar redirect por defecto a /chat
+            redirectTo: "/chat",
         });
     } catch (error) {
         console.error("Error creating user:", error);
@@ -76,40 +75,15 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
 export const meta: MetaFunction = () => [{ title: "Registro - Lawyer" }];
 
-export default function signup() {
+export default function Signup() {
     const [searchParams] = useSearchParams();
-    const redirectTo = searchParams.get("redirectTo") || "/";
     const actionData = useActionData<typeof action>();
+    const navigation = useNavigation();
     const emailRef = useRef<HTMLInputElement>(null);
     const passwordRef = useRef<HTMLInputElement>(null);
     const confirmPasswordRef = useRef<HTMLInputElement>(null);
-    const [isCreating, setIsCreating] = useState(false);
-    const [loadingStep, setLoadingStep] = useState(0);
 
-    const loadingSteps = [
-        { message: "Creando tu cuenta...", icon: "👤" },
-        { message: "Asignando rol de usuario...", icon: "🎭" },
-        { message: "Reclamando trial gratuito...", icon: "🎫" },
-        { message: "Configurando perfil...", icon: "⚙️" },
-        { message: "¡Todo listo! Redirigiendo...", icon: "✅" }
-    ];
-
-    // Simular progreso de creación
-    const handleFormSubmit = (e: React.FormEvent) => {
-        setIsCreating(true);
-        setLoadingStep(0);
-
-        // Simular pasos de creación
-        const interval = setInterval(() => {
-            setLoadingStep(prev => {
-                if (prev >= loadingSteps.length - 1) {
-                    clearInterval(interval);
-                    return prev;
-                }
-                return prev + 1;
-            });
-        }, 1000);
-    };
+    const isSubmitting = navigation.state === "submitting" || navigation.state === "loading";
 
     useEffect(() => {
         if (actionData?.errors?.email) {
@@ -144,107 +118,6 @@ export default function signup() {
             },
         },
     };
-
-    // Loading Screen Component
-    if (isCreating) {
-        return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-blue-50 via-white to-purple-50">
-                <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="max-w-md w-full mx-4"
-                >
-                    <div className="bg-white rounded-2xl shadow-2xl border-2 border-blue-100 p-8">
-                        {/* Logo animado */}
-                        <motion.div
-                            className="flex justify-center mb-6"
-                            animate={{ rotate: [0, 360] }}
-                            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                        >
-                            <div className="h-16 w-16 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center shadow-lg">
-                                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" />
-                                </svg>
-                            </div>
-                        </motion.div>
-
-                        {/* Título */}
-                        <h2 className="text-2xl font-bold text-center text-gray-900 mb-2"
-                            style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                            Preparando tu cuenta
-                        </h2>
-                        <p className="text-center text-gray-600 mb-8">
-                            Solo tomará unos segundos...
-                        </p>
-
-                        {/* Steps */}
-                        <div className="space-y-4">
-                            {loadingSteps.map((step, index) => (
-                                <motion.div
-                                    key={index}
-                                    initial={{ opacity: 0, x: -20 }}
-                                    animate={{
-                                        opacity: index <= loadingStep ? 1 : 0.3,
-                                        x: 0
-                                    }}
-                                    transition={{ delay: index * 0.2 }}
-                                    className={`flex items-center space-x-3 p-3 rounded-lg ${
-                                        index === loadingStep
-                                            ? 'bg-blue-50 border-2 border-blue-200'
-                                            : index < loadingStep
-                                            ? 'bg-green-50 border-2 border-green-200'
-                                            : 'bg-gray-50 border-2 border-gray-100'
-                                    }`}
-                                >
-                                    <span className="text-2xl">{step.icon}</span>
-                                    <span className={`flex-1 font-medium ${
-                                        index === loadingStep
-                                            ? 'text-blue-900'
-                                            : index < loadingStep
-                                            ? 'text-green-900'
-                                            : 'text-gray-500'
-                                    }`}>
-                                        {step.message}
-                                    </span>
-                                    {index < loadingStep && (
-                                        <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" />
-                                        </svg>
-                                    )}
-                                    {index === loadingStep && (
-                                        <motion.div
-                                            animate={{ rotate: 360 }}
-                                            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                                        >
-                                            <svg className="w-5 h-5 text-blue-500" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                            </svg>
-                                        </motion.div>
-                                    )}
-                                </motion.div>
-                            ))}
-                        </div>
-
-                        {/* Progress Bar */}
-                        <div className="mt-6">
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                                <motion.div
-                                    className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full"
-                                    initial={{ width: "0%" }}
-                                    animate={{ width: `${((loadingStep + 1) / loadingSteps.length) * 100}%` }}
-                                    transition={{ duration: 0.5 }}
-                                />
-                            </div>
-                            <p className="text-center text-sm text-gray-500 mt-2">
-                                {Math.round(((loadingStep + 1) / loadingSteps.length) * 100)}% completado
-                            </p>
-                        </div>
-                    </div>
-                </motion.div>
-            </div>
-        );
-    }
 
     return (
         <div className="flex min-h-screen flex-col">
@@ -351,10 +224,10 @@ export default function signup() {
                         variants={formVariants}
                         initial="hidden"
                         animate="visible"
-                        className="bg-white/80 backdrop-blur-sm rounded-2xl p-8 border-2 border-blue-100 shadow-2xl"
+                        className="bg-white/80 backdrop-blur-2xl rounded-2xl p-8 border-2 border-blue-100 shadow-2xl"
                         style={{ borderRadius: "2px" }}
                     >
-                        <Form method="post" onSubmit={handleFormSubmit} className="space-y-6">
+                        <Form method="post" className="space-y-6">
                             <div className="space-y-6">
                                 <motion.div
                                     initial={{ x: -20, opacity: 0 }}
@@ -367,7 +240,7 @@ export default function signup() {
                                     <div className="relative">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                             <svg
-                                                className="h-5 w-5 text-gray-400"
+                                                className="h-5 w-5 text-black"
                                                 fill="none"
                                                 viewBox="0 0 24 24"
                                                 stroke="currentColor"
@@ -388,9 +261,10 @@ export default function signup() {
                                             name="email"
                                             type="email"
                                             autoComplete="email"
+                                            disabled={isSubmitting}
                                             aria-invalid={actionData?.errors?.email ? true : undefined}
                                             aria-describedby="email-error"
-                                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-300 bg-white/80 backdrop-blur-sm"
+                                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-300 bg-white/80 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                             placeholder="tu@email.com"
                                         />
                                     </div>
@@ -424,7 +298,7 @@ export default function signup() {
                                     <div className="relative">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                             <svg
-                                                className="h-5 w-5 text-gray-400"
+                                                className="h-5 w-5 text-black"
                                                 fill="none"
                                                 viewBox="0 0 24 24"
                                                 stroke="currentColor"
@@ -443,9 +317,10 @@ export default function signup() {
                                             name="password"
                                             type="password"
                                             autoComplete="new-password"
+                                            disabled={isSubmitting}
                                             aria-invalid={actionData?.errors?.password ? true : undefined}
                                             aria-describedby="password-error"
-                                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-300 bg-white/80 backdrop-blur-sm"
+                                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-300 bg-white/80 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                             placeholder="••••••••"
                                         />
                                     </div>
@@ -479,7 +354,7 @@ export default function signup() {
                                     <div className="relative">
                                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                                             <svg
-                                                className="h-5 w-5 text-gray-400"
+                                                className="h-5 w-5 text-black"
                                                 fill="none"
                                                 viewBox="0 0 24 24"
                                                 stroke="currentColor"
@@ -498,9 +373,10 @@ export default function signup() {
                                             name="confirmPassword"
                                             type="password"
                                             autoComplete="new-password"
+                                            disabled={isSubmitting}
                                             aria-invalid={actionData?.errors?.confirmPassword ? true : undefined}
                                             aria-describedby="confirm-password-error"
-                                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-300 bg-white/80 backdrop-blur-sm"
+                                            className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-500 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-300 bg-white/80 backdrop-blur-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                             placeholder="••••••••"
                                         />
                                     </div>
@@ -524,8 +400,6 @@ export default function signup() {
                                 </motion.div>
                             </div>
 
-                            <input type="hidden" name="redirectTo" value={redirectTo} />
-
                             <motion.div
                                 initial={{ y: 20, opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
@@ -533,16 +407,27 @@ export default function signup() {
                             >
                                 <motion.button
                                     type="submit"
-                                    className="w-full py-3 px-4 bg-black text-white text-sm font-semibold hover:bg-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl"
+                                    disabled={isSubmitting}
+                                    className="w-full py-3 px-4 bg-black text-white text-sm font-semibold hover:bg-gray-800 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                                     style={{
                                         borderRadius: "2px",
                                         fontFamily: "Georgia, 'Times New Roman', serif",
                                         letterSpacing: "0.05em",
                                     }}
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
+                                    whileHover={!isSubmitting ? { scale: 1.02 } : {}}
+                                    whileTap={!isSubmitting ? { scale: 0.98 } : {}}
                                 >
-                                    Crear cuenta
+                                    {isSubmitting ? (
+                                        <>
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Creando cuenta...
+                                        </>
+                                    ) : (
+                                        'Crear cuenta'
+                                    )}
                                 </motion.button>
                             </motion.div>
                         </Form>

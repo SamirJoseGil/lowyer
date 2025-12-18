@@ -2,11 +2,18 @@ import type { ActionFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
 import { requireUser } from "~/lib/auth.server";
 import { sendMessage } from "~/lib/chat.server";
+import { enforceRateLimit } from "~/lib/security/rate-limiting.server";
+import { validateMessageContent } from "~/lib/security/input-sanitizer.server";
+import { moderateMessage } from "~/lib/security/moderation.server";
+import { logAuditEvent } from "~/lib/security/audit-log.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   if (request.method !== "POST") {
     return json({ error: "Method not allowed" }, { status: 405 });
   }
+
+  // Rate limiting
+  await enforceRateLimit(request, "CHAT_MESSAGE");
 
   console.log(`📡 Chat send API called`);
   console.log(`📋 Request Content-Type: ${request.headers.get("content-type")}`);
@@ -49,12 +56,34 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       }, { status: 400 });
     }
 
+    // Sanitizar y validar contenido
+    const validation = validateMessageContent(content);
+    
+    if (!validation.isValid) {
+      console.warn(`⚠️ Message content validation failed: ${validation.violations.join(", ")}`);
+    }
+    
+    // Usar contenido sanitizado
+    const sanitizedContent = validation.sanitized;
+
     const result = await sendMessage(
       sessionId,
       user.id,
-      content,
+      sanitizedContent,
       senderRole as any
     );
+    
+    // Moderar mensaje si fue creado
+    if (result.success && result.message) {
+      await moderateMessage(result.message.id, sanitizedContent);
+      
+      // Log de auditoría
+      await logAuditEvent(user.id, "chat.message", {
+        sessionId,
+        messageId: result.message.id,
+        violations: validation.violations,
+      });
+    }
 
     console.log(`📤 Send message result:`, { 
       success: result.success, 

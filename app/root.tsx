@@ -15,6 +15,10 @@ import { getEnv } from "./env.server";
 import { getUser } from "~/lib/auth.server";
 import { getUserActiveLicense } from "~/lib/licenses.server";
 import Layout from "~/components/Layout";
+import chatStyles from "~/styles/chat.css?url";
+import markdownStyles from "~/styles/markdown.css?url";
+import { getSecurityHeaders } from "~/middleware/security-headers";
+import CookieBanner from "~/components/Consent/CookieBanner";
 
 export const meta: MetaFunction = () => {
   return [
@@ -42,6 +46,8 @@ export const links: LinksFunction = () => [
     href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
   },
   { rel: "icon", href: "/favicon.ico" },
+  { rel: "stylesheet", href: chatStyles },
+  { rel: "stylesheet", href: markdownStyles },
 ];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -71,6 +77,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     } : null,
     activeLicense
   });
+};
+
+export const headers = () => {
+  return getSecurityHeaders();
 };
 
 // 📌 App principal
@@ -118,6 +128,7 @@ export default function App() {
         </Layout>
         <ScrollRestoration />
         <Scripts />
+        <CookieBanner />
       </body>
     </html>
   );

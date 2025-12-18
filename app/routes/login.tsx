@@ -6,6 +6,9 @@ import { motion } from "framer-motion";
 
 import { verifyLogin } from "~/lib/auth.server";
 import { createUserSession, getUserId } from "~/lib/session.server";
+import { enforceRateLimit } from "~/lib/security/rate-limiting.server";
+import { isAccountLocked, recordLoginAttempt } from "~/lib/security/brute-force.server";
+import { logAuditEvent } from "~/lib/security/audit-log.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
     const userId = await getUserId(request);
@@ -14,6 +17,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
+    // Rate limiting
+    await enforceRateLimit(request, "LOGIN");
+    
     const formData = await request.formData();
     const email = formData.get("email");
     const password = formData.get("password");
@@ -34,20 +40,45 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         );
     }
 
+    // Verificar si la cuenta está bloqueada
+    const lockStatus = await isAccountLocked(email);
+    if (lockStatus.locked) {
+        return json(
+            { 
+                errors: { 
+                    email: `Cuenta temporalmente bloqueada. Intenta de nuevo en ${lockStatus.remainingTime} minutos.`, 
+                    password: null 
+                } 
+            },
+            { status: 403 }
+        );
+    }
+    
+    const ipAddress = request.headers.get("x-forwarded-for") || 
+                     request.headers.get("x-real-ip") || 
+                     "unknown";
+    
     const user = await verifyLogin(email, password);
 
     if (!user) {
+        // Registrar intento fallido
+        await recordLoginAttempt(email, ipAddress, false);
+        
         return json(
             { errors: { email: "Email o contraseña incorrectos", password: null } },
             { status: 400 }
         );
     }
+    
+    // Registrar intento exitoso y limpiar intentos fallidos
+    await recordLoginAttempt(email, ipAddress, true);
+    await logAuditEvent(user.id, "user.login", { ipAddress });
 
     return createUserSession({
         request,
         userId: user.id,
         remember: remember === "on" ? true : false,
-        redirectTo: "/chat", // Cambiar redirect por defecto a /chat
+        redirectTo: "/chat",
     });
 };
 

@@ -1,238 +1,152 @@
 import { motion } from "framer-motion";
-import { useEffect, useRef } from "react";
+import clsx from "clsx";
+import MarkdownMessage from "./MarkdownMessage";
 
-type Message = {
-    id: string;
-    content: string;
-    senderRole: "user" | "abogado" | "admin" | "ia";
-    createdAt: string;
-    sender?: {
-        profile?: {
-            firstName?: string;
-            lastName?: string;
-        };
-        email: string;
-    };
-    isError?: boolean;
-};
+interface Message {
+  id: string;
+  content: string;
+  senderRole: string;
+  senderId: string | null;
+  createdAt: string;
+  sender?: {
+    profile?: {
+      firstName?: string | null;
+      lastName?: string | null;
+    } | null;
+  } | null;
+}
 
-type MessageListProps = {
-    messages: Message[];
-    currentUserId: string;
-    isTyping?: boolean;
-};
+interface MessageListProps {
+  messages: Message[];
+  currentUserId: string;
+}
 
-export default function MessageList({ messages, currentUserId, isTyping }: MessageListProps) {
-    const messagesContainerRef = useRef<HTMLDivElement>(null);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (messagesContainerRef.current) {
-            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-        }
-    }, [messages]);
-
-    const formatTimestamp = (timestamp: string) => {
-        const date = new Date(timestamp);
-        return date.toLocaleTimeString("es-CO", {
-            hour: "2-digit",
-            minute: "2-digit",
-        });
-    };
-
-    const getMessageAvatar = (senderRole: string, senderName?: string) => {
-        switch (senderRole) {
-            case "user":
-                return (
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-600 to-blue-700 flex items-center justify-center text-white text-sm font-medium">
-                        {senderName?.charAt(0) || "U"}
-                    </div>
-                );
-            case "ia":
-                return (
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-r from-purple-600 to-pink-600 flex items-center justify-center">
-                        <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082a.75.75 0 00-.678.744v.812M9.75 3.104a48.424 48.424 0 011.5 0M5 14.5c0 2.208 1.792 4 4 4s4-1.792 4-4M5 14.5c0-1.01.377-1.932 1-2.626M19 14.5v-5.714a2.25 2.25 0 00-.659-1.591L14.25 3.104M19 14.5c0 2.208-1.792 4-4 4s-4-1.792-4-4m8 0c1.01-.377 1.932-1 2.626-1" />
-                        </svg>
-                    </div>
-                );
-            case "abogado":
-                return (
-                    <div className="h-8 w-8 rounded-full bg-gradient-to-r from-green-600 to-emerald-600 flex items-center justify-center text-white text-sm font-medium">
-                        {senderName?.charAt(0) || "A"}
-                    </div>
-                );
-            case "system":
-                return (
-                    <div className="h-8 w-8 rounded-full bg-gray-500 flex items-center justify-center">
-                        <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" />
-                        </svg>
-                    </div>
-                );
-            default:
-                return (
-                    <div className="h-8 w-8 rounded-full bg-gray-400 flex items-center justify-center text-white text-sm font-medium">
-                        ?
-                    </div>
-                );
-        }
-    };
-
-    const getSenderName = (senderRole: string, sender?: any) => {
-        switch (senderRole) {
-            case "user":
-                return "Tú";
-            case "ia":
-                return "Asistente Legal IA";
-            case "abogado":
-                return sender?.profile?.firstName
-                    ? `${sender.profile.firstName} ${sender?.profile?.lastName || ""}`
-                    : "Abogado";
-            case "system":
-                return "Sistema";
-            default:
-                return "Desconocido";
-        }
-    };
-
-    const isFromCurrentUser = (senderId: string | null, senderRole: string) => {
-        return senderId === currentUserId && senderRole === "user";
-    };
-
+export default function MessageList({ messages, currentUserId }: MessageListProps) {
+  if (messages.length === 0) {
     return (
-        <div className="h-full flex flex-col bg-gradient-to-b from-white to-gray-50">
-            {/* Scrollable Messages Area */}
-            <div
-                ref={messagesContainerRef}
-                className="flex-1 overflow-y-auto px-4 py-6 space-y-4"
-                style={{
-                    height: '100%',
-                    maxHeight: '100%',
-                    scrollBehavior: 'smooth'
-                }}
-            >
-                {messages.length === 0 ? (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex flex-col items-center justify-center h-full text-center px-4"
-                    >
-                        <div className="mb-6">
-                            <div className="h-20 w-20 bg-gradient-to-r from-blue-500 to-purple-500 rounded-2xl flex items-center justify-center shadow-2xl mx-auto">
-                                <svg className="h-10 w-10 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M18 13V5a2 2 0 00-2-2H4a2 2 0 00-2 2v8a2 2 0 002 2h3l3 3 3-3h3a2 2 0 002-2zM5 7a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1zm1 3a1 1 0 100 2h3a1 1 0 100-2H6z" />
-                                </svg>
-                            </div>
-                        </div>
-
-                        <h3 className="text-xl font-bold text-gray-900 mb-2"
-                            style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                            Comienza tu consulta legal
-                        </h3>
-                        <p className="text-gray-600 max-w-md italic"
-                           style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
-                            Escribe tu pregunta y recibirás una respuesta especializada
-                        </p>
-                    </motion.div>
-                ) : (
-                    messages.map((message, index) => (
-                        <motion.div
-                            key={message.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.05 }}
-                            className={`flex ${message.senderRole === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                            {/* Avatar para mensajes de IA/Abogado (lado izquierdo) */}
-                            {!isFromCurrentUser(message.sender?.email ?? null, message.senderRole) && (
-                                <motion.div
-                                    className="flex-shrink-0"
-                                    whileHover={{ scale: 1.1 }}
-                                    transition={{ duration: 0.2 }}
-                                >
-                                    {getMessageAvatar(message.senderRole, getSenderName(message.senderRole, message.sender))}
-                                </motion.div>
-                            )}
-
-                            {/* Contenedor del mensaje */}
-                            <div className={`flex flex-col max-w-[75%] ${isFromCurrentUser(message.sender?.email ?? null, message.senderRole) ? 'items-end' : 'items-start'}`}>
-                                {/* Nombre del remitente (solo para IA/Abogado) */}
-                                {!isFromCurrentUser(message.sender?.email ?? null, message.senderRole) && (
-                                    <div className="text-xs font-medium text-gray-600 mb-1 px-1">
-                                        {getSenderName(message.senderRole, message.sender)}
-                                    </div>
-                                )}
-
-                                {/* Burbuja del mensaje */}
-                                <motion.div
-                                    className={`relative rounded-2xl px-4 py-3 max-w-full ${isFromCurrentUser(message.sender?.email ?? null, message.senderRole)
-                                            ? 'message-gradient-user text-white rounded-br-sm'
-                                            : message.senderRole === 'ia'
-                                                ? 'message-gradient-ai text-gray-900 rounded-bl-sm'
-                                                : message.senderRole === 'abogado'
-                                                    ? 'message-gradient-lawyer text-gray-900 rounded-bl-sm'
-                                                    : message.isError
-                                                        ? 'bg-red-50 text-red-800 border border-red-200 rounded-bl-sm'
-                                                        : 'bg-gray-50 text-gray-900 border border-gray-200 rounded-bl-sm'
-                                        } shadow-md hover:shadow-lg transition-all duration-200 group`}
-                                    whileHover={{ y: -1 }}
-                                    transition={{ duration: 0.2 }}
-                                >
-                                    {/* Contenido del mensaje */}
-                                    <div className="text-sm leading-relaxed whitespace-pre-wrap text-legal">
-                                        {message.content}
-                                    </div>
-
-                                    {/* Indicador especial para IA */}
-                                    {message.senderRole === 'ia' && (
-                                        <div className="flex items-center mt-3 pt-2 border-t border-gray-200">
-                                            <motion.div
-                                                animate={{ rotate: [0, 360] }}
-                                                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                                                className="h-4 w-4 text-purple-500 mr-2"
-                                            >
-                                                <svg fill="currentColor" viewBox="0 0 20 20">
-                                                    <path fillRule="evenodd" d="M9.75 3.104v5.714a2.25 2.25 0 01-.659 1.591L5 14.5M9.75 3.104c-.251.023-.501.05-.75.082a.75.75 0 00-.678.744v.812M9.75 3.104a48.424 48.424 0 011.5 0M5 14.5c0 2.208 1.792 4 4 4s4-1.792 4-4M5 14.5c0-1.01.377-1.932 1-2.626M19 14.5v-5.714a2.25 2.25 0 00-.659-1.591L14.25 3.104M19 14.5c0 2.208-1.792 4-4 4s-4-1.792-4-4m8 0c1.01-.377 1.932-1 2.626-1" />
-                                                </svg>
-                                            </motion.div>
-                                            <span className="text-xs text-gray-600 font-medium">Respuesta generada por IA</span>
-                                        </div>
-                                    )}
-
-                                    {/* Indicador para abogado */}
-                                    {message.senderRole === 'abogado' && (
-                                        <div className="flex items-center mt-3 pt-2 border-t border-green-200">
-                                            <svg className="h-4 w-4 text-green-600 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                                <path fillRule="evenodd" d="M6.267 3.455a3.066 3.066 0 001.745-.723 3.066 3.066 0 013.976 0 3.066 3.066 0 001.745.723 3.066 3.066 0 012.812 2.812c.051.643.304 1.254.723 1.745a3.066 3.066 0 010 3.976 3.066 3.066 0 00-.723 1.745 3.066 3.066 0 01-2.812 2.812 3.066 3.066 0 00-1.745.723 3.066 3.066 0 01-3.976 0 3.066 3.066 0 00-1.745-.723 3.066 3.066 0 01-2.812-2.812 3.066 3.066 0 00-.723-1.745 3.066 3.066 0 010-3.976 3.066 3.066 0 00.723-1.745 3.066 3.066 0 012.812-2.812zm7.44 5.252a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" />
-                                            </svg>
-                                            <span className="text-xs text-gray-700 font-medium">Abogado verificado</span>
-                                        </div>
-                                    )}
-
-                                    {/* Timestamp */}
-                                    <div className={`absolute -bottom-6 text-xs transition-opacity duration-200 ${isFromCurrentUser(message.sender?.email ?? null, message.senderRole) ? 'right-0 text-gray-500' : 'left-0 text-gray-500'
-                                        } opacity-0 group-hover:opacity-100`}>
-                                        {formatTimestamp(message.createdAt)}
-                                    </div>
-                                </motion.div>
-                            </div>
-
-                            {/* Avatar para mensajes del usuario (lado derecho) */}
-                            {isFromCurrentUser(message.sender?.email ?? null, message.senderRole) && (
-                                <motion.div
-                                    className="flex-shrink-0"
-                                    whileHover={{ scale: 1.1 }}
-                                    transition={{ duration: 0.2 }}
-                                >
-                                    {getMessageAvatar('user', 'U')}
-                                </motion.div>
-                            )}
-                        </motion.div>
-                    ))
-                )}
-                <div ref={messagesEndRef} />
-            </div>
-        </div>
+      <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
+          <div className="h-20 w-20 bg-gradient-to-r from-blue-100 to-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="h-10 w-10 text-blue-600" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2"
+              style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+            Inicia la conversación
+          </h3>
+          <p className="text-gray-600 text-sm"
+             style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}>
+            Escribe tu consulta legal para comenzar
+          </p>
+        </motion.div>
+      </div>
     );
+  }
+
+  return (
+    <div 
+      className="flex-1 overflow-y-auto p-6 space-y-4 bg-gradient-to-b from-gray-50 to-white"
+      style={{
+        scrollbarWidth: 'thin',
+        scrollbarColor: '#3b82f6 #e5e7eb'
+      }}
+    >
+      {messages.map((message) => {
+        const isOwnMessage = message.senderId === currentUserId;
+        const isAI = message.senderRole === "ia";
+        
+        const displayName = message.sender?.profile?.firstName && message.sender?.profile?.lastName
+          ? `${message.sender.profile.firstName} ${message.sender.profile.lastName}`
+          : isAI ? "Asistente Legal IA" : "Usuario";
+
+        return (
+          <motion.div
+            key={message.id}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className={clsx(
+              "flex items-start gap-3 w-full",
+              isOwnMessage ? "flex-row-reverse" : "flex-row"
+            )}
+          >
+            {/* Avatar */}
+            <div className={clsx(
+              "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center shadow-md",
+              isOwnMessage
+                ? "bg-gradient-to-r from-blue-500 to-cyan-500"
+                : isAI
+                  ? "bg-gradient-to-r from-purple-500 to-pink-500"
+                  : "bg-gradient-to-r from-green-500 to-teal-500"
+            )}>
+              {isAI ? (
+                <svg className="h-6 w-6 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M13 7H7v6h6V7z" />
+                  <path fillRule="evenodd" d="M7 2a1 1 0 012 0v1h2V2a1 1 0 112 0v1h2a2 2 0 012 2v2h1a1 1 0 110 2h-1v2h1a1 1 0 110 2h-1v2a2 2 0 01-2 2h-2v1a1 1 0 11-2 0v-1H9v1a1 1 0 11-2 0v-1H5a2 2 0 01-2-2v-2H2a1 1 0 110-2h1V9H2a1 1 0 010-2h1V5a2 2 0 012-2h2V2zM5 5h10v10H5V5z" clipRule="evenodd" />
+                </svg>
+              ) : (
+                <span className="text-sm font-medium text-white">
+                  {displayName.charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+
+            {/* Message Bubble */}
+            <div className={clsx(
+              "flex-1 rounded-2xl px-5 py-3 shadow-md max-w-2xl",
+              isOwnMessage
+                ? "bg-gradient-to-r from-blue-500 to-cyan-500 text-white"
+                : "bg-white border-2 border-gray-100"
+            )}>
+              {/* Sender Name - Solo para mensajes que NO son del usuario actual */}
+              {!isOwnMessage && (
+                <p className={clsx(
+                  "text-xs font-semibold mb-2",
+                  isAI ? "text-purple-600" : "text-gray-600"
+                )}>
+                  {isAI ? (
+                    <span className="flex items-center">
+                      <svg className="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M13 7H7v6h6V7z" />
+                        <path fillRule="evenodd" d="M7 2a1 1 0 012 0v1h2V2a1 1 0 112 0v1h2a2 2 0 012 2v2h1a1 1 0 110 2h-1v2h1a1 1 0 110 2h-1v2a2 2 0 01-2 2h-2v1a1 1 0 11-2 0v-1H9v1a1 1 0 11-2 0v-1H5a2 2 0 01-2-2v-2H2a1 1 0 110-2h1V9H2a1 1 0 010-2h1V5a2 2 0 012-2h2V2zM5 5h10v10H5V5z" clipRule="evenodd" />
+                      </svg>
+                      Asistente Legal IA
+                    </span>
+                  ) : displayName}
+                </p>
+              )}
+
+              {/* Message Content con Markdown para IA */}
+              {isAI ? (
+                <MarkdownMessage content={message.content} />
+              ) : (
+                <p className={clsx(
+                  "text-sm leading-relaxed whitespace-pre-wrap",
+                  isOwnMessage ? "text-white" : "text-gray-800"
+                )}>
+                  {message.content}
+                </p>
+              )}
+
+              {/* Timestamp */}
+              <p className={clsx(
+                "text-xs mt-2",
+                isOwnMessage ? "text-blue-100" : "text-gray-500"
+              )}>
+                {new Date(message.createdAt).toLocaleTimeString('es-CO', {
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
+              </p>
+            </div>
+          </motion.div>
+        );
+      })}
+    </div>
+  );
 }

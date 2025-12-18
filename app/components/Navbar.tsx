@@ -10,7 +10,7 @@ const navigation = [
     { name: "Inicio", href: "/" },
     { name: "Asistente", href: "/chat" },
     { name: "Licencias", href: "/licencias" },
-    { name: "Acerca de", href: "/acerca" },
+    { name: "Sobre nosotros", href: "/acerca" },
 ];
 
 type NavbarProps = {

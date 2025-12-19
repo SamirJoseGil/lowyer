@@ -28,6 +28,7 @@
     "axios": "^1.11.0",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.0",
+    "date-fns": "^4.1.0",
     "framer-motion": "^11.0.8",
     "isbot": "^4.1.0",
     "isomorphic-dompurify": "^2.34.0",

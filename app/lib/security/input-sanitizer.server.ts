@@ -1,7 +1,12 @@
-import DOMPurify from "isomorphic-dompurify";
+import { JSDOM } from 'jsdom';
+import DOMPurify from 'dompurify';
+
+// Crear una instancia de DOMPurify usando jsdom
+const window = new JSDOM('').window;
+const purify = DOMPurify(window as unknown as Window);
 
 export function sanitizeHtml(dirty: string): string {
-  return DOMPurify.sanitize(dirty, {
+  return purify.sanitize(dirty, {
     ALLOWED_TAGS: [], // No HTML permitido
     ALLOWED_ATTR: [],
   });
